@@ -383,6 +383,36 @@ function resetLobby(lobbyId) {
 }
 
 /**
+ * Force reset a lobby (dev mode only) - works even during in_progress
+ */
+function forceResetLobby(lobbyId) {
+  const lobby = activeLobbies.get(lobbyId);
+  if (!lobby) {
+    console.log(`Lobby ${lobbyId} not found for force reset`);
+    return;
+  }
+
+  // Close all WebSocket connections gracefully
+  for (const [userId, ws] of lobby.connections) {
+    if (ws.readyState === 1) {
+      ws.close(4000, 'Lobby reset by admin');
+    }
+  }
+
+  db.resetLobby(lobbyId);
+  db.clearLobbyPlayers(lobbyId);
+
+  lobby.status = 'empty';
+  lobby.first_join_at = null;
+  lobby.timeout_at = null;
+  lobby.current_match_id = null;
+  lobby.players = [];
+  lobby.connections.clear();
+
+  console.log(`Lobby ${lobbyId} force reset (dev mode)`);
+}
+
+/**
  * Set lobby to in_progress when match starts
  */
 function setLobbyInProgress(lobbyId, matchId) {
@@ -456,6 +486,7 @@ module.exports = {
   processTimeoutRefund,
   processTreasuryRefund,
   resetLobby,
+  forceResetLobby,
   setLobbyInProgress,
   broadcastToLobby,
 };

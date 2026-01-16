@@ -421,6 +421,16 @@ function getActiveBots() {
 }
 
 /**
+ * Remove all bots (dev mode reset)
+ */
+function removeAllBots() {
+  for (const [userId] of activeBots) {
+    removeBot(userId);
+  }
+  console.log('All bots removed');
+}
+
+/**
  * Fill a lobby with bots (adds bots until 3 players)
  */
 async function fillLobbyWithBots(lobbyId) {
@@ -446,6 +456,7 @@ async function fillLobbyWithBots(lobbyId) {
 module.exports = {
   addBotToLobby,
   removeBot,
+  removeAllBots,
   getActiveBots,
   fillLobbyWithBots,
   cleanupBot,

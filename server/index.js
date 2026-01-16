@@ -142,6 +142,31 @@ app.get('/api/bot/list', (req, res) => {
   res.json({ success: true, bots });
 });
 
+// Reset lobby for testing (Dev Mode Only)
+app.post('/api/dev/reset', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: 'Reset disabled in production' });
+  }
+
+  const { lobbyId } = req.body;
+  const targetLobbyId = lobbyId || 1;
+
+  try {
+    // Remove all bots
+    bot.removeAllBots();
+
+    // Reset the lobby
+    lobby.forceResetLobby(targetLobbyId);
+
+    // Broadcast updated lobby list
+    broadcastLobbyList();
+
+    res.json({ success: true, message: `Lobby ${targetLobbyId} reset` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Remove a bot
 app.post('/api/bot/remove', (req, res) => {
   if (process.env.NODE_ENV === 'production') {
