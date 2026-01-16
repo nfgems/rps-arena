@@ -23,6 +23,7 @@ const UI = (function () {
   let currentLobbyId = null;
   let myRole = null;
   let devMode = false;
+  let spawnPosition = { x: 800, y: 450 }; // Default to center, updated by role assignment
 
   /**
    * Initialize UI
@@ -274,8 +275,9 @@ const UI = (function () {
   function handleRoleAssignment(data) {
     myRole = data.role;
 
-    // Set initial position
-    Input.setPosition(data.spawnX, data.spawnY);
+    // Store spawn position for when game actually starts
+    spawnPosition = { x: data.spawnX, y: data.spawnY };
+    console.log('[DEBUG] Role assignment - spawn position:', spawnPosition);
 
     // Show role
     const roleDisplay = document.getElementById('role-display');
@@ -296,10 +298,18 @@ const UI = (function () {
         const gameCanvas = document.getElementById('game-canvas');
         Renderer.init(gameCanvas);
         Input.init(gameCanvas);
-        Input.startSending();
 
-        // Set local player for interpolation
-        Interpolation.setLocalPlayer(Network.getUserId());
+        // Set input target to spawn position IMMEDIATELY
+        // This uses the position received from ROLE_ASSIGNMENT before snapshots arrive
+        console.log('[DEBUG] Game start - setting input to spawn:', spawnPosition);
+        Input.setPosition(spawnPosition.x, spawnPosition.y);
+
+        // Set local player for interpolation WITH spawn position
+        // This fixes the "invisible barrier" issue where player was stuck at (0,0) until first snapshot
+        Interpolation.setLocalPlayer(Network.getUserId(), spawnPosition.x, spawnPosition.y);
+
+        Input.startSending();
+        console.log('[DEBUG] Input started, current target:', Input.getTarget());
 
         // Start render loop
         startGameLoop();
@@ -513,31 +523,64 @@ const UI = (function () {
 
   let gameLoopId = null;
 
+  // Arena constants for client-side prediction (must match server)
+  const ARENA_WIDTH = 1600;
+  const ARENA_HEIGHT = 900;
+  const PLAYER_RADIUS = 22;
+
+  /**
+   * Clamp position to arena bounds (same as server)
+   */
+  function clampToArena(x, y) {
+    return {
+      x: Math.max(PLAYER_RADIUS, Math.min(ARENA_WIDTH - PLAYER_RADIUS, x)),
+      y: Math.max(PLAYER_RADIUS, Math.min(ARENA_HEIGHT - PLAYER_RADIUS, y)),
+    };
+  }
+
   function startGameLoop() {
     const gameState = { effects: [] };
+    let loopCount = 0;
 
     function loop() {
       // Update local player position based on input
       const target = Input.getTarget();
-      if (!target.frozen) {
-        // Simple client-side prediction (move toward target)
-        const currentPos = Interpolation.getPosition(Network.getUserId());
-        if (currentPos) {
-          const dx = target.x - currentPos.x;
-          const dy = target.y - currentPos.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const maxDelta = 450 / 60; // Max speed per frame at 60 FPS
 
-          if (dist > maxDelta) {
-            const ratio = maxDelta / dist;
-            Interpolation.updateLocalPosition(
-              currentPos.x + dx * ratio,
-              currentPos.y + dy * ratio
-            );
-          } else {
-            Interpolation.updateLocalPosition(target.x, target.y);
-          }
+      // Simple client-side prediction (move toward target)
+      const currentPos = Interpolation.getPosition(Network.getUserId());
+
+      // Debug first few loops
+      if (loopCount < 5) {
+        console.log('[DEBUG] Game loop #' + loopCount + ' - target:', target.x.toFixed(1), target.y.toFixed(1),
+                    'currentPos:', currentPos ? currentPos.x.toFixed(1) + ',' + currentPos.y.toFixed(1) : 'null');
+        loopCount++;
+      }
+
+      if (currentPos) {
+        const dx = target.x - currentPos.x;
+        const dy = target.y - currentPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDelta = 450 / 60; // Max speed per frame at 60 FPS
+
+        // Log when there's significant movement to do
+        if (dist > 50 && loopCount < 20) {
+          console.log('[DEBUG] Movement needed - dist:', dist.toFixed(1), 'from', currentPos.x.toFixed(1), currentPos.y.toFixed(1), 'to target', target.x.toFixed(1), target.y.toFixed(1));
+          loopCount++;
         }
+
+        let newX, newY;
+        if (dist > maxDelta) {
+          const ratio = maxDelta / dist;
+          newX = currentPos.x + dx * ratio;
+          newY = currentPos.y + dy * ratio;
+        } else {
+          newX = target.x;
+          newY = target.y;
+        }
+
+        // Clamp to arena bounds (must match server physics)
+        const clamped = clampToArena(newX, newY);
+        Interpolation.updateLocalPosition(clamped.x, clamped.y);
       }
 
       // Render

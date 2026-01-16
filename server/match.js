@@ -107,10 +107,14 @@ function startCountdown(match) {
   const startMsg = protocol.createMatchStarting(match.id, 3);
   broadcastToMatch(match, startMsg);
 
-  // Send role assignments to each player
+  // Send role assignments to each player AND set their matchId
   for (const player of match.players) {
     const ws = match.connections.get(player.id);
     if (ws && ws.readyState === 1) {
+      // Set matchId on the connection so it can process inputs
+      if (ws.setMatchId) {
+        ws.setMatchId(match.id);
+      }
       const roleMsg = protocol.createRoleAssignment(player.role, player.x, player.y);
       ws.send(roleMsg);
     }
@@ -336,15 +340,30 @@ async function voidMatch(matchId, reason) {
 // Input Handling
 // ============================================
 
+// Debug counter for input logging
+let inputLogCount = 0;
+
 /**
  * Process player input
  */
 function processInput(matchId, userId, input) {
   const match = activeMatches.get(matchId);
-  if (!match || match.status !== 'running') return;
+  if (!match || match.status !== 'running') {
+    if (inputLogCount < 5) {
+      console.log('[DEBUG] Input rejected - match status:', match ? match.status : 'no match');
+      inputLogCount++;
+    }
+    return;
+  }
 
   const player = match.players.find(p => p.id === userId);
-  if (!player || !player.alive) return;
+  if (!player || !player.alive) {
+    if (inputLogCount < 5) {
+      console.log('[DEBUG] Input rejected - player:', player ? 'dead' : 'not found');
+      inputLogCount++;
+    }
+    return;
+  }
 
   // Validate sequence number (prevent replay)
   if (input.sequence <= player.lastInputSequence) {
@@ -355,6 +374,12 @@ function processInput(matchId, userId, input) {
   // Validate target position (within arena)
   const targetX = Math.max(0, Math.min(physics.ARENA_WIDTH, input.targetX));
   const targetY = Math.max(0, Math.min(physics.ARENA_HEIGHT, input.targetY));
+
+  // Debug first few accepted inputs
+  if (inputLogCount < 10) {
+    console.log('[DEBUG] Input accepted - seq:', input.sequence, 'target:', targetX.toFixed(1), targetY.toFixed(1), 'player pos:', player.x.toFixed(1), player.y.toFixed(1));
+    inputLogCount++;
+  }
 
   player.targetX = targetX;
   player.targetY = targetY;

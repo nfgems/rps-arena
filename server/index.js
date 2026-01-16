@@ -250,6 +250,11 @@ wss.on('connection', (ws, req) => {
   let pingInterval = null;
   let lastPingTime = null;
 
+  // Expose a method to set matchId from outside (used when match starts)
+  ws.setMatchId = (matchId) => {
+    currentMatchId = matchId;
+  };
+
   console.log(`WebSocket connected from ${ip}`);
 
   // Ping interval

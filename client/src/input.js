@@ -8,7 +8,6 @@ const Input = (function () {
   let canvas = null;
   let targetX = 0;
   let targetY = 0;
-  let frozen = false;
   let enabled = false;
   let sendInterval = null;
 
@@ -23,7 +22,13 @@ const Input = (function () {
   function init(canvasElement) {
     canvas = canvasElement;
 
-    // Mouse move handler
+    console.log('[DEBUG] Input.init - before listeners, targetX:', targetX, 'targetY:', targetY, 'enabled:', enabled);
+
+    // Mouse move handler - use document to catch all mouse movement
+    // This fixes the issue where canvas doesn't receive events until focused
+    document.addEventListener('mousemove', handleMouseMove);
+
+    // Also listen on canvas for redundancy
     canvas.addEventListener('mousemove', handleMouseMove);
 
     // Mouse leave handler
@@ -32,6 +37,7 @@ const Input = (function () {
     // Mouse enter handler
     canvas.addEventListener('mouseenter', handleMouseEnter);
 
+    console.log('[DEBUG] Input.init - after listeners, targetX:', targetX, 'targetY:', targetY);
     console.log('Input initialized');
   }
 
@@ -40,9 +46,17 @@ const Input = (function () {
    */
   function handleMouseMove(event) {
     if (!enabled) return;
+    if (!canvas) return;
 
     // Get canvas-relative coordinates
     const rect = canvas.getBoundingClientRect();
+
+    // Skip if canvas hasn't been laid out yet (would cause NaN/Infinity)
+    if (rect.width === 0 || rect.height === 0) {
+      console.log('[DEBUG] Canvas rect is zero:', rect);
+      return;
+    }
+
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
 
@@ -50,25 +64,32 @@ const Input = (function () {
     const scaleX = ARENA_WIDTH / rect.width;
     const scaleY = ARENA_HEIGHT / rect.height;
 
-    targetX = Math.max(0, Math.min(ARENA_WIDTH, canvasX * scaleX));
-    targetY = Math.max(0, Math.min(ARENA_HEIGHT, canvasY * scaleY));
-    frozen = false;
+    const newX = Math.max(0, Math.min(ARENA_WIDTH, canvasX * scaleX));
+    const newY = Math.max(0, Math.min(ARENA_HEIGHT, canvasY * scaleY));
+
+    // Log first few mouse moves
+    if (Math.abs(newX - targetX) > 50 || Math.abs(newY - targetY) > 50) {
+      console.log('[DEBUG] Mouse move - new target:', newX, newY, 'rect:', rect.width, rect.height);
+    }
+
+    targetX = newX;
+    targetY = newY;
   }
 
   /**
    * Handle mouse leaving canvas
+   * NOTE: We no longer freeze on mouse leave - player continues moving toward last known target
    */
   function handleMouseLeave() {
-    if (!enabled) return;
-    frozen = true;
+    // Don't freeze - let player continue moving toward last target position
+    // This prevents the "invisible barrier" feel when mouse briefly leaves canvas
   }
 
   /**
    * Handle mouse entering canvas
    */
   function handleMouseEnter() {
-    if (!enabled) return;
-    frozen = false;
+    // No longer needed since we don't freeze on leave
   }
 
   /**
@@ -77,9 +98,18 @@ const Input = (function () {
   function startSending() {
     enabled = true;
 
+    console.log('[DEBUG] startSending called, initial target:', targetX, targetY);
+
+    // Log first few inputs
+    let inputCount = 0;
+
     // Send inputs at 30 Hz
     sendInterval = setInterval(() => {
-      Network.sendInput(targetX, targetY, frozen);
+      if (inputCount < 5) {
+        console.log('[DEBUG] Sending input #' + inputCount + ':', targetX, targetY);
+        inputCount++;
+      }
+      Network.sendInput(targetX, targetY, false);
     }, 1000 / SEND_RATE);
 
     console.log('Input sending started');
@@ -103,15 +133,17 @@ const Input = (function () {
    * Get current target position
    */
   function getTarget() {
-    return { x: targetX, y: targetY, frozen };
+    return { x: targetX, y: targetY, frozen: false };
   }
 
   /**
    * Set initial position
    */
   function setPosition(x, y) {
+    console.log('[DEBUG] Input.setPosition called with:', x, y);
     targetX = x;
     targetY = y;
+    console.log('[DEBUG] Input.setPosition result - targetX:', targetX, 'targetY:', targetY);
   }
 
   /**
@@ -126,6 +158,7 @@ const Input = (function () {
    */
   function destroy() {
     stopSending();
+    document.removeEventListener('mousemove', handleMouseMove);
     if (canvas) {
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
