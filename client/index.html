@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPS Arena</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Mobile Block Screen -->
+  <div id="mobile-block" class="screen hidden">
+    <div class="mobile-message">
+      <h1>RPS Arena</h1>
+      <p>RPS Arena is designed for desktop.</p>
+      <p>Please visit on a computer.</p>
+    </div>
+  </div>
+
+  <!-- Landing Screen -->
+  <div id="landing-screen" class="screen">
+    <div class="landing-content">
+      <h1 class="logo">RPS ARENA</h1>
+      <p class="tagline">Real-time 3-player Rock Paper Scissors</p>
+      <p class="description">Entry: 1 USDC | Winner takes 2.4 USDC</p>
+      <button id="connect-wallet-btn" class="btn btn-primary">Connect Wallet</button>
+      <p class="network-info">Powered by Base</p>
+    </div>
+  </div>
+
+  <!-- Lobby Browser Screen -->
+  <div id="lobby-screen" class="screen hidden">
+    <header class="lobby-header">
+      <h2>RPS ARENA</h2>
+      <div class="user-info">
+        <span id="user-display"></span>
+        <button id="disconnect-btn" class="btn btn-link">Disconnect</button>
+      </div>
+    </header>
+    <div class="lobby-content">
+      <h3>Select a Lobby</h3>
+      <div id="lobby-list" class="lobby-list">
+        <!-- Lobbies populated by JS -->
+      </div>
+      <div class="ping-display">Ping: <span id="ping-value">--</span>ms</div>
+    </div>
+  </div>
+
+  <!-- Waiting in Lobby Screen -->
+  <div id="waiting-screen" class="screen hidden">
+    <div class="waiting-content">
+      <h2>Lobby #<span id="current-lobby-id">-</span></h2>
+      <div id="player-slots" class="player-slots">
+        <!-- Player slots populated by JS -->
+      </div>
+      <div class="lobby-timer">
+        <span id="timeout-display">Waiting for players...</span>
+      </div>
+      <button id="refund-btn" class="btn btn-secondary hidden">Request Refund</button>
+      <p class="waiting-warning">Once you join, your 1 USDC is committed until match starts or 1-hour timeout.</p>
+    </div>
+  </div>
+
+  <!-- Match Countdown Screen -->
+  <div id="countdown-screen" class="screen hidden">
+    <canvas id="countdown-canvas"></canvas>
+    <div class="countdown-overlay">
+      <div id="countdown-number" class="countdown-number">3</div>
+      <div id="role-display" class="role-display"></div>
+    </div>
+  </div>
+
+  <!-- In-Game Screen -->
+  <div id="game-screen" class="screen hidden">
+    <canvas id="game-canvas"></canvas>
+    <div class="game-ping">Ping: <span id="game-ping-value">--</span>ms</div>
+  </div>
+
+  <!-- Match Result Screen -->
+  <div id="result-screen" class="screen hidden">
+    <div class="result-content">
+      <h2 id="result-title">VICTORY!</h2>
+      <p id="result-payout" class="payout">+2.4 USDC</p>
+      <div id="final-standings" class="standings">
+        <!-- Standings populated by JS -->
+      </div>
+      <button id="play-again-btn" class="btn btn-primary">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Payment Modal -->
+  <div id="payment-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Join Lobby #<span id="join-lobby-id">-</span></h3>
+      <p>Send exactly <strong>1 USDC</strong> to:</p>
+      <div class="deposit-address">
+        <code id="deposit-address">-</code>
+        <button id="copy-address-btn" class="btn btn-small">Copy</button>
+      </div>
+      <p class="warning">Warning: Once sent, USDC is non-refundable unless the match doesn't start within 1 hour.</p>
+      <div class="modal-actions">
+        <button id="send-payment-btn" class="btn btn-primary">Send 1 USDC</button>
+        <button id="cancel-join-btn" class="btn btn-secondary">Cancel</button>
+      </div>
+      <div id="payment-status" class="payment-status hidden">
+        <span>Waiting for confirmation...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="src/wallet.js"></script>
+  <script src="src/network.js"></script>
+  <script src="src/input.js"></script>
+  <script src="src/interpolation.js"></script>
+  <script src="src/renderer.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,484 @@
+/**
+ * Match management for RPS Arena
+ * Game loop, state management, and match lifecycle
+ */
+
+const db = require('./database');
+const physics = require('./physics');
+const protocol = require('./protocol');
+const logger = require('./logger');
+const payments = require('./payments');
+const lobby = require('./lobby');
+
+// Active matches (in-memory for real-time game state)
+const activeMatches = new Map();
+
+// Consecutive contested tick tracking for anti-stall
+const contestedTickCounts = new Map();
+
+// ============================================
+// Match Creation
+// ============================================
+
+/**
+ * Start a new match from a ready lobby
+ * @param {number} lobbyId - Lobby ID
+ * @returns {Object} Match object
+ */
+function startMatch(lobbyId) {
+  const lobbyData = lobby.getLobby(lobbyId);
+  if (!lobbyData || lobbyData.status !== 'ready') {
+    throw new Error('Lobby not ready');
+  }
+
+  const players = lobbyData.players.filter(p => !p.refunded_at);
+  if (players.length !== 3) {
+    throw new Error('Need exactly 3 players');
+  }
+
+  // Generate RNG seed
+  const rngSeed = Date.now();
+
+  // Create match in database
+  const matchData = db.createMatch(lobbyId, rngSeed);
+
+  // Calculate spawn positions and assign roles
+  const spawnPositions = physics.calculateSpawnPositions(rngSeed);
+  const roles = physics.shuffleRoles(rngSeed + 1); // Different seed for roles
+
+  // Create match players
+  const matchPlayers = [];
+  for (let i = 0; i < 3; i++) {
+    const player = players[i];
+    const role = roles[i];
+    const spawn = spawnPositions[i];
+
+    db.addMatchPlayer(matchData.id, player.user_id, role, spawn.x, spawn.y);
+
+    matchPlayers.push({
+      id: player.user_id,
+      walletAddress: player.wallet_address,
+      username: player.username,
+      role,
+      x: spawn.x,
+      y: spawn.y,
+      targetX: spawn.x,
+      targetY: spawn.y,
+      alive: true,
+      frozen: false,
+      connected: true,
+      lastInputSequence: 0,
+    });
+  }
+
+  // Create active match state
+  const match = {
+    id: matchData.id,
+    lobbyId,
+    status: 'countdown',
+    tick: 0,
+    players: matchPlayers,
+    connections: new Map(lobbyData.connections), // Copy connections from lobby
+    countdownRemaining: 3,
+    gameLoopInterval: null,
+    snapshotCounter: 0,
+  };
+
+  activeMatches.set(matchData.id, match);
+  lobby.setLobbyInProgress(lobbyId, matchData.id);
+
+  // Log match start
+  logger.logMatchStart(matchData.id, 0, matchPlayers);
+
+  // Start countdown
+  startCountdown(match);
+
+  console.log(`Match ${matchData.id} started for lobby ${lobbyId}`);
+
+  return match;
+}
+
+// ============================================
+// Countdown Phase
+// ============================================
+
+/**
+ * Start the countdown phase
+ */
+function startCountdown(match) {
+  // Send match starting notification
+  const startMsg = protocol.createMatchStarting(match.id, 3);
+  broadcastToMatch(match, startMsg);
+
+  // Send role assignments to each player
+  for (const player of match.players) {
+    const ws = match.connections.get(player.id);
+    if (ws && ws.readyState === 1) {
+      const roleMsg = protocol.createRoleAssignment(player.role, player.x, player.y);
+      ws.send(roleMsg);
+    }
+  }
+
+  // Initial snapshot (positions before game starts)
+  const snapshot = protocol.createSnapshot(0, match.players);
+  broadcastToMatch(match, snapshot);
+
+  // Countdown timer
+  const countdownInterval = setInterval(() => {
+    match.countdownRemaining--;
+
+    if (match.countdownRemaining > 0) {
+      const countdownMsg = protocol.createCountdown(match.countdownRemaining);
+      broadcastToMatch(match, countdownMsg);
+    } else {
+      clearInterval(countdownInterval);
+
+      // Check for disconnected players at start of RUNNING
+      for (const player of match.players) {
+        if (!player.connected) {
+          player.alive = false;
+          logger.logDisconnect(match.id, 0, player.id, 'disconnected_at_start');
+        }
+      }
+
+      // Transition to running
+      match.status = 'running';
+      db.updateMatchStatus(match.id, 'running');
+
+      // Send GO countdown
+      const goMsg = protocol.createCountdown(0);
+      broadcastToMatch(match, goMsg);
+
+      // Start game loop
+      startGameLoop(match);
+    }
+  }, 1000);
+}
+
+// ============================================
+// Game Loop (30 Hz)
+// ============================================
+
+/**
+ * Start the 30 Hz game loop
+ */
+function startGameLoop(match) {
+  const tickInterval = 1000 / physics.TICK_RATE; // ~33.3ms
+
+  match.gameLoopInterval = setInterval(() => {
+    if (match.status !== 'running') {
+      clearInterval(match.gameLoopInterval);
+      return;
+    }
+
+    processTick(match);
+  }, tickInterval);
+}
+
+/**
+ * Process a single game tick
+ * Order: disconnects → inputs → movement → collisions → win check → broadcast
+ */
+function processTick(match) {
+  match.tick++;
+
+  const alivePlayers = match.players.filter(p => p.alive);
+
+  // 1. Process disconnects
+  for (const player of alivePlayers) {
+    if (!player.connected) {
+      player.alive = false;
+      logger.logDisconnect(match.id, match.tick, player.id, 'disconnected');
+
+      // Send elimination for disconnect
+      const elimMsg = protocol.createElimination(match.tick, player.id, null);
+      broadcastToMatch(match, elimMsg);
+    }
+  }
+
+  // Recheck alive after disconnects
+  const stillAlive = match.players.filter(p => p.alive);
+
+  // 2. Check win condition after disconnects
+  if (stillAlive.length <= 1) {
+    endMatch(match, stillAlive[0] || null, 'last_standing');
+    return;
+  }
+
+  // 3. Process movement for alive players
+  for (const player of stillAlive) {
+    const newPos = physics.moveTowardTarget(
+      { x: player.x, y: player.y },
+      { x: player.targetX, y: player.targetY },
+      player.frozen
+    );
+    player.x = newPos.x;
+    player.y = newPos.y;
+  }
+
+  // 4. Process collisions
+  const collisionResult = physics.processCollisions(match.players);
+
+  if (collisionResult.type === 'elimination') {
+    // Reset contested tick counter
+    contestedTickCounts.set(match.id, 0);
+
+    for (const elim of collisionResult.eliminations) {
+      db.eliminatePlayer(match.id, elim.loserId, elim.winnerId,
+        match.players.find(p => p.id === elim.loserId).x,
+        match.players.find(p => p.id === elim.loserId).y
+      );
+
+      logger.logElimination(match.id, match.tick, elim.winnerId, elim.loserId, match.players);
+
+      const elimMsg = protocol.createElimination(match.tick, elim.loserId, elim.winnerId);
+      broadcastToMatch(match, elimMsg);
+    }
+  } else if (collisionResult.type === 'bounce') {
+    // Track consecutive contested ticks for anti-stall
+    const count = (contestedTickCounts.get(match.id) || 0) + 1;
+    contestedTickCounts.set(match.id, count);
+
+    // Anti-stall: force larger separation after 5 consecutive contested ticks
+    if (count >= 5) {
+      for (const player of collisionResult.bouncedPlayers) {
+        const p = match.players.find(mp => mp.id === player.id);
+        if (p) {
+          p.x = player.x;
+          p.y = player.y;
+        }
+      }
+      contestedTickCounts.set(match.id, 0);
+    } else {
+      for (const player of collisionResult.bouncedPlayers) {
+        const p = match.players.find(mp => mp.id === player.id);
+        if (p) {
+          p.x = player.x;
+          p.y = player.y;
+        }
+      }
+    }
+
+    logger.logBounce(match.id, match.tick, collisionResult.bouncedPlayers);
+
+    const bounceMsg = protocol.createBounce(match.tick, collisionResult.bouncedPlayers);
+    broadcastToMatch(match, bounceMsg);
+  } else {
+    // No collision, reset counter
+    contestedTickCounts.set(match.id, 0);
+  }
+
+  // 5. Check win condition after collisions
+  const finalAlive = match.players.filter(p => p.alive);
+  if (finalAlive.length <= 1) {
+    endMatch(match, finalAlive[0] || null, 'last_standing');
+    return;
+  }
+
+  // 6. Broadcast snapshot (at 20 Hz = every ~1.5 ticks)
+  match.snapshotCounter++;
+  if (match.snapshotCounter >= 1.5) {
+    match.snapshotCounter = 0;
+    const snapshot = protocol.createSnapshot(match.tick, match.players);
+    broadcastToMatch(match, snapshot);
+  }
+}
+
+// ============================================
+// Match End
+// ============================================
+
+/**
+ * End the match and process payouts
+ */
+async function endMatch(match, winner, reason) {
+  if (match.status === 'finished' || match.status === 'void') {
+    return; // Already ended
+  }
+
+  clearInterval(match.gameLoopInterval);
+  match.status = 'finished';
+
+  logger.logMatchEnd(match.id, match.tick, winner?.id || null, reason);
+
+  if (winner) {
+    // Process winner payout
+    const winnerPlayer = match.players.find(p => p.id === winner.id);
+    const payoutResult = await payments.sendWinnerPayout(winnerPlayer.walletAddress);
+
+    if (payoutResult.success) {
+      db.setMatchWinner(match.id, winner.id, 2.4, payoutResult.txHash);
+    } else {
+      console.error('Payout failed:', payoutResult.error);
+      db.setMatchWinner(match.id, winner.id, 2.4, null);
+    }
+
+    // Send match end message
+    const endMsg = protocol.createMatchEnd(winner.id, {
+      winner: 2.4,
+      treasury: 0.6,
+    });
+    broadcastToMatch(match, endMsg);
+  } else {
+    // No winner (void match)
+    db.updateMatchStatus(match.id, 'void');
+    match.status = 'void';
+
+    // Process refunds
+    await lobby.processTreasuryRefund(match.lobbyId, reason);
+  }
+
+  // Cleanup
+  setTimeout(() => {
+    activeMatches.delete(match.id);
+    contestedTickCounts.delete(match.id);
+    lobby.resetLobby(match.lobbyId);
+  }, 5000); // Keep match data for 5 seconds for final messages
+
+  console.log(`Match ${match.id} ended. Winner: ${winner?.id || 'none'}, Reason: ${reason}`);
+}
+
+/**
+ * Void a match (for server crash, mass disconnect)
+ */
+async function voidMatch(matchId, reason) {
+  const match = activeMatches.get(matchId);
+  if (!match) return;
+
+  clearInterval(match.gameLoopInterval);
+  match.status = 'void';
+  db.updateMatchStatus(matchId, 'void');
+
+  logger.logMatchEnd(matchId, match.tick, null, reason);
+
+  // Process refunds for all players
+  await lobby.processTreasuryRefund(match.lobbyId, reason);
+
+  const refundMsg = protocol.createRefundProcessed(match.lobbyId, reason,
+    match.players.map(p => ({
+      userId: p.id,
+      username: p.username || protocol.truncateAddress(p.walletAddress),
+      amount: 1,
+      txHash: null, // Will be filled when refund processes
+    }))
+  );
+  broadcastToMatch(match, refundMsg);
+
+  setTimeout(() => {
+    activeMatches.delete(matchId);
+    contestedTickCounts.delete(matchId);
+  }, 5000);
+
+  console.log(`Match ${matchId} voided. Reason: ${reason}`);
+}
+
+// ============================================
+// Input Handling
+// ============================================
+
+/**
+ * Process player input
+ */
+function processInput(matchId, userId, input) {
+  const match = activeMatches.get(matchId);
+  if (!match || match.status !== 'running') return;
+
+  const player = match.players.find(p => p.id === userId);
+  if (!player || !player.alive) return;
+
+  // Validate sequence number (prevent replay)
+  if (input.sequence <= player.lastInputSequence) {
+    return;
+  }
+  player.lastInputSequence = input.sequence;
+
+  // Validate target position (within arena)
+  const targetX = Math.max(0, Math.min(physics.ARENA_WIDTH, input.targetX));
+  const targetY = Math.max(0, Math.min(physics.ARENA_HEIGHT, input.targetY));
+
+  player.targetX = targetX;
+  player.targetY = targetY;
+  player.frozen = input.frozen || false;
+}
+
+// ============================================
+// Connection Management
+// ============================================
+
+/**
+ * Handle player disconnect during match
+ */
+function handleDisconnect(matchId, userId) {
+  const match = activeMatches.get(matchId);
+  if (!match) return;
+
+  const player = match.players.find(p => p.id === userId);
+  if (player) {
+    player.connected = false;
+    match.connections.delete(userId);
+  }
+
+  // Check for mass disconnect
+  const connectedCount = match.players.filter(p => p.connected).length;
+  const aliveCount = match.players.filter(p => p.alive).length;
+
+  if (connectedCount === 0 && aliveCount > 1) {
+    // All players disconnected simultaneously
+    voidMatch(matchId, 'triple_disconnect');
+  } else if (aliveCount === 2) {
+    // Check if last 2 players disconnected
+    const aliveAndConnected = match.players.filter(p => p.alive && p.connected);
+    if (aliveAndConnected.length === 0) {
+      voidMatch(matchId, 'double_disconnect');
+    }
+  }
+}
+
+/**
+ * Get active match for a player
+ */
+function getPlayerMatch(userId) {
+  for (const [matchId, match] of activeMatches) {
+    if (match.players.some(p => p.id === userId)) {
+      return match;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get match by ID
+ */
+function getMatch(matchId) {
+  return activeMatches.get(matchId);
+}
+
+// ============================================
+// Utilities
+// ============================================
+
+/**
+ * Broadcast message to all players in a match
+ */
+function broadcastToMatch(match, message) {
+  for (const [userId, ws] of match.connections) {
+    if (ws && ws.readyState === 1) {
+      ws.send(message);
+    }
+  }
+}
+
+// ============================================
+// Exports
+// ============================================
+
+module.exports = {
+  startMatch,
+  endMatch,
+  voidMatch,
+  processInput,
+  handleDisconnect,
+  getPlayerMatch,
+  getMatch,
+  broadcastToMatch,
+};

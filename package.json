@@ -1,0 +1,24 @@
+{
+  "name": "rps-arena",
+  "version": "1.0.0",
+  "description": "Real-time 3-player Rock-Paper-Scissors arena game with USDC payments on Base",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "init-db": "node -e \"require('./server/database.js').initializeDatabase()\""
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3",
+    "ethers": "^6.11.0",
+    "dotenv": "^16.4.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
