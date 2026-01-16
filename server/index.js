@@ -206,7 +206,7 @@ function checkRateLimit(ip, messageType) {
 
   if (messageType === 'INPUT') {
     limits.inputCount++;
-    return limits.inputCount <= 60; // 60 INPUT/sec
+    return limits.inputCount <= 120; // 120 INPUT/sec (headroom for 60 Hz client)
   } else {
     limits.otherCount++;
     return limits.otherCount <= 10; // 10 other/sec

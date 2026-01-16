@@ -207,6 +207,12 @@ function processTick(match) {
   }
 
   // 3. Process movement for alive players
+  // Store previous positions for swept collision detection
+  for (const player of stillAlive) {
+    player.prevX = player.x;
+    player.prevY = player.y;
+  }
+
   for (const player of stillAlive) {
     const newPos = physics.moveTowardTarget(
       { x: player.x, y: player.y },
@@ -218,7 +224,38 @@ function processTick(match) {
   }
 
   // 4. Process collisions
+  // Debug: Log player states EVERY tick when 2 remain (throttled to every 30 ticks = 1 second)
+  if (stillAlive.length === 2) {
+    const p1 = stillAlive[0];
+    const p2 = stillAlive[1];
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Log every second when 2 players, or every tick if within 60 pixels
+    if (match.tick % 30 === 0 || dist < 60) {
+      console.log(`[FINAL2] Tick ${match.tick}: ${p1.role}(${p1.id.slice(-4)}) pos=(${p1.x.toFixed(0)},${p1.y.toFixed(0)}) vs ${p2.role}(${p2.id.slice(-4)}) pos=(${p2.x.toFixed(0)},${p2.y.toFixed(0)}), dist=${dist.toFixed(1)}, overlap=${dist <= physics.PLAYER_RADIUS * 2}`);
+    }
+  }
+
   const collisionResult = physics.processCollisions(match.players);
+
+  // Debug: Log collision result when 2 players remain
+  if (stillAlive.length === 2 && collisionResult.type !== 'none') {
+    console.log(`[DEBUG] Collision result with 2 alive: type=${collisionResult.type}, eliminations=${JSON.stringify(collisionResult.eliminations)}`);
+  }
+
+  // Debug: Log when only 2 players remain and they're close
+  if (stillAlive.length === 2) {
+    const p1 = stillAlive[0];
+    const p2 = stillAlive[1];
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    // Only log when they're getting close (within 100 pixels)
+    if (distance < 100) {
+      console.log(`[DEBUG] 2 players close - ${p1.role}(${p1.id.slice(-4)}) vs ${p2.role}(${p2.id.slice(-4)}), dist: ${distance.toFixed(1)}, collision: ${collisionResult.type}`);
+    }
+  }
 
   if (collisionResult.type === 'elimination') {
     for (const elim of collisionResult.eliminations) {
@@ -237,6 +274,7 @@ function processTick(match) {
   // 5. Check win condition after collisions
   const finalAlive = match.players.filter(p => p.alive);
   if (finalAlive.length <= 1) {
+    console.log(`[DEBUG] Match ending - winner: ${finalAlive[0]?.id || 'none'}, reason: last_standing`);
     endMatch(match, finalAlive[0] || null, 'last_standing');
     return;
   }

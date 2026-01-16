@@ -194,11 +194,15 @@ function getTreasuryWallet() {
     return null;
   }
 
-  const provider = getProvider();
-  // Derive from path m/44'/60'/0'/0/0 (first account)
-  const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonic);
-  const derived = hdNode.derivePath("m/44'/60'/0'/0/0");
-  return new ethers.Wallet(derived.privateKey, provider);
+  try {
+    const provider = getProvider();
+    // Use fromPhrase with path directly - this derives to the specified path from root
+    const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, "m/44'/60'/0'/0/0");
+    return wallet.connect(provider);
+  } catch (error) {
+    console.error('Error creating treasury wallet:', error.message);
+    return null;
+  }
 }
 
 /**

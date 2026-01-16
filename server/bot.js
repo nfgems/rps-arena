@@ -186,7 +186,7 @@ function handleBotMessage(botState, messageStr) {
         break;
 
       case 'COUNTDOWN':
-        if (message.count === 0) {
+        if (message.secondsRemaining === 0) {
           // Game started, begin AI
           startBotAI(botState);
         }
@@ -225,6 +225,10 @@ function startBotAI(botState) {
 
   console.log(`Bot ${botState.username} AI started`);
 
+  // Give human player time to react - bot waits 2 seconds before moving
+  botState.startDelay = 60; // 60 ticks at 100ms = 6 seconds of slow movement
+  botState.tickCount = 0;
+
   // Bot makes decisions every 100ms
   botState.aiInterval = setInterval(() => {
     if (!botState.matchId) return;
@@ -242,12 +246,23 @@ function startBotAI(botState) {
       return;
     }
 
+    botState.tickCount++;
+
     // Simple AI: find the player we can beat and chase them
     const target = findBestTarget(botState, activeMatch);
 
     if (target) {
-      botState.targetX = target.x;
-      botState.targetY = target.y;
+      // During start delay, move slower by targeting a point between bot and target
+      if (botState.tickCount < botState.startDelay) {
+        // Move at 30% speed during warmup
+        const slowFactor = 0.3;
+        botState.targetX = botPlayer.x + (target.x - botPlayer.x) * slowFactor;
+        botState.targetY = botPlayer.y + (target.y - botPlayer.y) * slowFactor;
+      } else {
+        // Full speed after warmup
+        botState.targetX = target.x;
+        botState.targetY = target.y;
+      }
     } else {
       // Random movement if no good target
       botState.targetX = Math.random() * physics.ARENA_WIDTH;

@@ -67,25 +67,22 @@ const Interpolation = (function () {
           return;
         }
 
-        // Blend toward server position if significantly different
+        // Blend local position toward server position for accuracy
+        // Server is authoritative - we need to stay synced to avoid
+        // visual desync where player appears in wrong place
         const dx = serverPlayer.x - localPlayerPosition.x;
         const dy = serverPlayer.y - localPlayerPosition.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance > 150) {
-          // Very large discrepancy (teleport/spawn), snap immediately
+        if (distance > 100) {
+          // Large discrepancy - snap immediately
           localPlayerPosition.x = serverPlayer.x;
           localPlayerPosition.y = serverPlayer.y;
-        } else if (distance > 80) {
-          // Large discrepancy, blend moderately
-          localPlayerPosition.x += dx * 0.3;
-          localPlayerPosition.y += dy * 0.3;
-        } else if (distance > 40) {
-          // Medium discrepancy, blend slowly
+        } else if (distance > 5) {
+          // Blend toward server position for smooth correction
           localPlayerPosition.x += dx * BLEND_SPEED;
           localPlayerPosition.y += dy * BLEND_SPEED;
         }
-        // Small discrepancies (< 40px) are ignored - trust client prediction
       }
     }
   }

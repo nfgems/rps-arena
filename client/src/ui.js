@@ -557,29 +557,9 @@ const UI = (function () {
       }
 
       if (currentPos) {
-        const dx = target.x - currentPos.x;
-        const dy = target.y - currentPos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const maxDelta = 450 / 60; // Max speed per frame at 60 FPS
-
-        // Log when there's significant movement to do
-        if (dist > 50 && loopCount < 20) {
-          console.log('[DEBUG] Movement needed - dist:', dist.toFixed(1), 'from', currentPos.x.toFixed(1), currentPos.y.toFixed(1), 'to target', target.x.toFixed(1), target.y.toFixed(1));
-          loopCount++;
-        }
-
-        let newX, newY;
-        if (dist > maxDelta) {
-          const ratio = maxDelta / dist;
-          newX = currentPos.x + dx * ratio;
-          newY = currentPos.y + dy * ratio;
-        } else {
-          newX = target.x;
-          newY = target.y;
-        }
-
-        // Clamp to arena bounds (must match server physics)
-        const clamped = clampToArena(newX, newY);
+        // For responsive feel, move directly toward mouse cursor
+        // The server will enforce the actual speed limit and reconcile
+        const clamped = clampToArena(target.x, target.y);
         Interpolation.updateLocalPosition(clamped.x, clamped.y);
       }
 

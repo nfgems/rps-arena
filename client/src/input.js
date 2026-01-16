@@ -10,11 +10,15 @@ const Input = (function () {
   let targetY = 0;
   let enabled = false;
   let sendInterval = null;
+  let hasReceivedMouseMove = false; // Track if mouse has moved since game started
+  let lastMouseX = null; // Track last raw mouse position to detect actual movement
+  let lastMouseY = null;
 
   // Constants
   const ARENA_WIDTH = 1600;
   const ARENA_HEIGHT = 900;
-  const SEND_RATE = 30; // 30 Hz
+  const SEND_RATE = 60; // 60 Hz
+  const MOUSE_MOVE_THRESHOLD = 5; // Minimum pixels mouse must move to register
 
   /**
    * Initialize input handling
@@ -57,6 +61,35 @@ const Input = (function () {
       return;
     }
 
+    // Check if mouse has actually moved since last check
+    // This prevents the initial mouse position from immediately overwriting spawn position
+    if (lastMouseX !== null && lastMouseY !== null) {
+      const mouseDeltaX = Math.abs(event.clientX - lastMouseX);
+      const mouseDeltaY = Math.abs(event.clientY - lastMouseY);
+
+      // Only register as actual movement if mouse moved more than threshold
+      if (mouseDeltaX < MOUSE_MOVE_THRESHOLD && mouseDeltaY < MOUSE_MOVE_THRESHOLD) {
+        // Mouse hasn't moved enough, don't update target
+        return;
+      }
+
+      // Mouse has moved, mark that we've received real input
+      if (!hasReceivedMouseMove) {
+        console.log('[DEBUG] First real mouse movement detected');
+        hasReceivedMouseMove = true;
+      }
+    }
+
+    // Update last known mouse position
+    lastMouseX = event.clientX;
+    lastMouseY = event.clientY;
+
+    // If this is the very first mousemove event after enable, just record position, don't update target
+    if (!hasReceivedMouseMove) {
+      console.log('[DEBUG] Recording initial mouse position, not updating target yet');
+      return;
+    }
+
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
 
@@ -96,6 +129,11 @@ const Input = (function () {
    * Start sending inputs
    */
   function startSending() {
+    // Reset mouse tracking - player will stay at spawn until mouse actually moves
+    hasReceivedMouseMove = false;
+    lastMouseX = null;
+    lastMouseY = null;
+
     enabled = true;
 
     console.log('[DEBUG] startSending called, initial target:', targetX, targetY);
@@ -103,7 +141,7 @@ const Input = (function () {
     // Log first few inputs
     let inputCount = 0;
 
-    // Send inputs at 30 Hz
+    // Send inputs at 60 Hz
     sendInterval = setInterval(() => {
       if (inputCount < 5) {
         console.log('[DEBUG] Sending input #' + inputCount + ':', targetX, targetY);

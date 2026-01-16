@@ -93,25 +93,93 @@ function getDistance(p1, p2) {
 }
 
 /**
+ * Check if two moving circles collided during a tick (swept collision)
+ * This catches cases where players pass through each other between frames
+ * @param {Object} p1Start - Player 1 start position {x, y}
+ * @param {Object} p1End - Player 1 end position {x, y}
+ * @param {Object} p2Start - Player 2 start position {x, y}
+ * @param {Object} p2End - Player 2 end position {x, y}
+ * @returns {boolean} True if circles collided at any point during movement
+ */
+function sweptCircleCollision(p1Start, p1End, p2Start, p2End) {
+  const collisionDist = PLAYER_RADIUS * 2;
+
+  // Relative motion: treat p1 as stationary and p2 as moving
+  const relStartX = p2Start.x - p1Start.x;
+  const relStartY = p2Start.y - p1Start.y;
+  const relEndX = p2End.x - p1End.x;
+  const relEndY = p2End.y - p1End.y;
+
+  // Direction of relative motion
+  const relDx = relEndX - relStartX;
+  const relDy = relEndY - relStartY;
+
+  // Quadratic coefficients for distance squared over time t in [0,1]
+  // dist^2(t) = |relStart + t * relD|^2
+  const a = relDx * relDx + relDy * relDy;
+  const b = 2 * (relStartX * relDx + relStartY * relDy);
+  const c = relStartX * relStartX + relStartY * relStartY - collisionDist * collisionDist;
+
+  // Check if already overlapping at start
+  if (c <= 0) return true;
+
+  // Check if overlapping at end
+  const endDistSq = relEndX * relEndX + relEndY * relEndY;
+  if (endDistSq <= collisionDist * collisionDist) return true;
+
+  // If no relative motion, no collision (already checked endpoints)
+  if (a < 0.0001) return false;
+
+  // Find minimum distance during motion using calculus
+  // d/dt(dist^2) = 2at + b = 0 => t = -b/(2a)
+  const tMin = -b / (2 * a);
+
+  // Check if minimum is within [0, 1]
+  if (tMin > 0 && tMin < 1) {
+    const minDistSq = a * tMin * tMin + b * tMin + c;
+    if (minDistSq <= 0) return true;
+  }
+
+  return false;
+}
+
+/**
  * Determine the loser in an RPS collision
  * @param {string} role1 - Role of player 1
  * @param {string} role2 - Role of player 2
- * @returns {number} 1 if player 1 loses, 2 if player 2 loses, 0 if same role
+ * @returns {number} 1 if player 1 loses, 2 if player 2 loses, 0 if same role or invalid
  */
 function getRpsLoser(role1, role2) {
+  // Guard against undefined/null roles
+  if (!role1 || !role2) {
+    console.error(`[ERROR] getRpsLoser called with invalid roles: role1=${role1}, role2=${role2}`);
+    return 0;
+  }
   if (BEATS[role1] === role2) return 2; // Player 1 wins, Player 2 loses
   if (BEATS[role2] === role1) return 1; // Player 2 wins, Player 1 loses
-  return 0; // Same role (shouldn't happen in this game)
+  return 0; // Same role
 }
 
 /**
  * Process collisions for all alive players
- * @param {Array} players - Array of player objects with {id, x, y, alive, role}
- * @returns {Object} { type: 'none'|'elimination', eliminations, bouncedPlayers }
+ * Uses swept collision detection to catch collisions that occur during movement
+ * @param {Array} players - Array of player objects with {id, x, y, alive, role, prevX, prevY}
+ * @returns {Object} { type: 'none'|'elimination'|'bounce', eliminations, bouncedPlayers }
  */
 function processCollisions(players) {
   const alive = players.filter(p => p.alive);
   const eliminations = [];
+  const sameRolePairs = [];
+
+  // Debug: Log when 2 players remain (only when close to reduce spam)
+  if (alive.length === 2) {
+    const p1 = alive[0];
+    const p2 = alive[1];
+    const d = Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+    if (d < 70) {
+      console.log(`[COLLISION] 2 alive: ${p1.role}(${p1.id.slice(-4)}) at (${p1.x.toFixed(0)},${p1.y.toFixed(0)}) vs ${p2.role}(${p2.id.slice(-4)}) at (${p2.x.toFixed(0)},${p2.y.toFixed(0)}), dist=${d.toFixed(1)}`);
+    }
+  }
 
   // Check all pairs for overlaps
   for (let i = 0; i < alive.length; i++) {
@@ -119,28 +187,67 @@ function processCollisions(players) {
       const p1 = alive[i];
       const p2 = alive[j];
 
-      if (isOverlapping(p1, p2)) {
+      const dist = getDistance(p1, p2);
+      const overlapping = isOverlapping(p1, p2);
+
+      // Also check swept collision (if previous positions are available)
+      const p1Prev = { x: p1.prevX ?? p1.x, y: p1.prevY ?? p1.y };
+      const p2Prev = { x: p2.prevX ?? p2.x, y: p2.prevY ?? p2.y };
+      const sweptCollision = sweptCircleCollision(p1Prev, p1, p2Prev, p2);
+
+      // Debug when players are close (within 100 pixels when only 2 alive)
+      if (dist < 100 && alive.length === 2) {
+        console.log(`[DEBUG] Final 2 players: ${p1.role}(${p1.id.slice(-4)}) at (${p1.x.toFixed(1)},${p1.y.toFixed(1)}) prev=(${p1Prev.x.toFixed(1)},${p1Prev.y.toFixed(1)}) vs ${p2.role}(${p2.id.slice(-4)}) at (${p2.x.toFixed(1)},${p2.y.toFixed(1)}) prev=(${p2Prev.x.toFixed(1)},${p2Prev.y.toFixed(1)}), dist=${dist.toFixed(1)}, overlapping=${overlapping}, swept=${sweptCollision}, threshold=${PLAYER_RADIUS * 2}`);
+      }
+
+      // Use swept collision OR endpoint overlap
+      if (overlapping || sweptCollision) {
         const loser = getRpsLoser(p1.role, p2.role);
+        console.log(`[DEBUG] COLLISION DETECTED (overlap=${overlapping}, swept=${sweptCollision}) at dist=${dist.toFixed(1)}: ${p1.role}(${p1.id.slice(-4)}) vs ${p2.role}(${p2.id.slice(-4)}), getRpsLoser=${loser}`);
         if (loser === 1) {
+          console.log(`[DEBUG] -> ${p1.role} loses to ${p2.role}`);
           eliminations.push({ winner: p2, loser: p1 });
         } else if (loser === 2) {
+          console.log(`[DEBUG] -> ${p2.role} loses to ${p1.role}`);
           eliminations.push({ winner: p1, loser: p2 });
+        } else {
+          // Same role = bounce apart instead of overlapping
+          console.log(`[DEBUG] -> Same role collision (loser=0) - bouncing ${p1.role} vs ${p2.role}`);
+          sameRolePairs.push([p1, p2]);
         }
-        // Same role = no elimination, players can overlap freely
       }
+    }
+  }
+
+  // Bounce apart same-role collisions
+  const bouncedPlayers = [];
+  for (const [p1, p2] of sameRolePairs) {
+    // Only bounce if both are still alive (not eliminated this tick)
+    if (p1.alive && p2.alive) {
+      bounceApart([p1, p2]);
+      bouncedPlayers.push(p1, p2);
     }
   }
 
   // No overlaps or no eliminations
   if (eliminations.length === 0) {
-    return { type: 'none', eliminations: [], bouncedPlayers: [] };
+    return {
+      type: bouncedPlayers.length > 0 ? 'bounce' : 'none',
+      eliminations: [],
+      bouncedPlayers: [...new Set(bouncedPlayers)], // Deduplicate
+    };
   }
 
   // Process all eliminations (even multiple simultaneous ones)
   const processedEliminations = [];
+  if (eliminations.length > 0) {
+    console.log(`[DEBUG] Processing ${eliminations.length} elimination(s)`);
+  }
   for (const { winner, loser } of eliminations) {
+    console.log(`[DEBUG] Elimination candidate: ${winner.role}(${winner.id.slice(-4)}) beats ${loser.role}(${loser.id.slice(-4)}), loser.alive=${loser.alive}`);
     // Only eliminate if loser is still alive (not already eliminated this tick)
     if (loser.alive) {
+      console.log(`[DEBUG] ELIMINATING ${loser.role}(${loser.id.slice(-4)})!`);
       loser.alive = false;
       processedEliminations.push({
         winnerId: winner.id,
@@ -148,13 +255,15 @@ function processCollisions(players) {
         winnerRole: winner.role,
         loserRole: loser.role,
       });
+    } else {
+      console.log(`[DEBUG] Skipping elimination - loser already dead`);
     }
   }
 
   return {
-    type: processedEliminations.length > 0 ? 'elimination' : 'none',
+    type: processedEliminations.length > 0 ? 'elimination' : (bouncedPlayers.length > 0 ? 'bounce' : 'none'),
     eliminations: processedEliminations,
-    bouncedPlayers: [],
+    bouncedPlayers: [...new Set(bouncedPlayers)], // Deduplicate
   };
 }
 
@@ -236,28 +345,57 @@ function bounceApart(players) {
 // ============================================
 
 /**
- * Calculate equidistant spawn positions for 3 players
- * @param {number} seed - Random seed for rotation offset
+ * Calculate random spawn positions for 3 players with minimum distance
  * @returns {Array} Array of {x, y} positions
  */
-function calculateSpawnPositions(seed) {
-  const centerX = ARENA_WIDTH / 2;
-  const centerY = ARENA_HEIGHT / 2;
-  const spawnRadius = 300;
-
-  // Use seed for deterministic random rotation
-  const rng = seededRandom(seed);
-  const rotationOffset = rng() * Math.PI * 2;
+function calculateSpawnPositions() {
+  const minDistance = 150; // Minimum distance between any two players
+  const padding = PLAYER_RADIUS + 10; // Keep away from arena edges
 
   const positions = [];
-  const baseAngles = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3]; // 0°, 120°, 240°
+  const maxAttempts = 100;
 
-  for (const baseAngle of baseAngles) {
-    const angle = baseAngle + rotationOffset;
-    positions.push({
-      x: centerX + Math.cos(angle) * spawnRadius,
-      y: centerY + Math.sin(angle) * spawnRadius,
-    });
+  for (let i = 0; i < 3; i++) {
+    let attempts = 0;
+    let validPosition = null;
+
+    while (attempts < maxAttempts) {
+      // Generate random position within padded arena bounds
+      const x = padding + Math.random() * (ARENA_WIDTH - 2 * padding);
+      const y = padding + Math.random() * (ARENA_HEIGHT - 2 * padding);
+
+      // Check distance from all existing positions
+      let isValid = true;
+      for (const pos of positions) {
+        const dx = x - pos.x;
+        const dy = y - pos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < minDistance) {
+          isValid = false;
+          break;
+        }
+      }
+
+      if (isValid) {
+        validPosition = { x, y };
+        break;
+      }
+
+      attempts++;
+    }
+
+    // Fallback: if no valid position found, use triangle formation
+    if (!validPosition) {
+      const centerX = ARENA_WIDTH / 2;
+      const centerY = ARENA_HEIGHT / 2;
+      const angle = (i * 2 * Math.PI) / 3 + Math.random() * Math.PI * 2;
+      validPosition = {
+        x: centerX + Math.cos(angle) * minDistance,
+        y: centerY + Math.sin(angle) * minDistance,
+      };
+    }
+
+    positions.push(validPosition);
   }
 
   return positions;
@@ -317,6 +455,7 @@ module.exports = {
   getDistance,
   getRpsLoser,
   processCollisions,
+  sweptCircleCollision,
 
   // Bounce
   bounceApart,
