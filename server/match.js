@@ -13,9 +13,6 @@ const lobby = require('./lobby');
 // Active matches (in-memory for real-time game state)
 const activeMatches = new Map();
 
-// Consecutive contested tick tracking for anti-stall
-const contestedTickCounts = new Map();
-
 // ============================================
 // Match Creation
 // ============================================
@@ -220,9 +217,6 @@ function processTick(match) {
   const collisionResult = physics.processCollisions(match.players);
 
   if (collisionResult.type === 'elimination') {
-    // Reset contested tick counter
-    contestedTickCounts.set(match.id, 0);
-
     for (const elim of collisionResult.eliminations) {
       db.eliminatePlayer(match.id, elim.loserId, elim.winnerId,
         match.players.find(p => p.id === elim.loserId).x,
@@ -234,38 +228,6 @@ function processTick(match) {
       const elimMsg = protocol.createElimination(match.tick, elim.loserId, elim.winnerId);
       broadcastToMatch(match, elimMsg);
     }
-  } else if (collisionResult.type === 'bounce') {
-    // Track consecutive contested ticks for anti-stall
-    const count = (contestedTickCounts.get(match.id) || 0) + 1;
-    contestedTickCounts.set(match.id, count);
-
-    // Anti-stall: force larger separation after 5 consecutive contested ticks
-    if (count >= 5) {
-      for (const player of collisionResult.bouncedPlayers) {
-        const p = match.players.find(mp => mp.id === player.id);
-        if (p) {
-          p.x = player.x;
-          p.y = player.y;
-        }
-      }
-      contestedTickCounts.set(match.id, 0);
-    } else {
-      for (const player of collisionResult.bouncedPlayers) {
-        const p = match.players.find(mp => mp.id === player.id);
-        if (p) {
-          p.x = player.x;
-          p.y = player.y;
-        }
-      }
-    }
-
-    logger.logBounce(match.id, match.tick, collisionResult.bouncedPlayers);
-
-    const bounceMsg = protocol.createBounce(match.tick, collisionResult.bouncedPlayers);
-    broadcastToMatch(match, bounceMsg);
-  } else {
-    // No collision, reset counter
-    contestedTickCounts.set(match.id, 0);
   }
 
   // 5. Check win condition after collisions
@@ -331,7 +293,6 @@ async function endMatch(match, winner, reason) {
   // Cleanup
   setTimeout(() => {
     activeMatches.delete(match.id);
-    contestedTickCounts.delete(match.id);
     lobby.resetLobby(match.lobbyId);
   }, 5000); // Keep match data for 5 seconds for final messages
 
@@ -366,7 +327,6 @@ async function voidMatch(matchId, reason) {
 
   setTimeout(() => {
     activeMatches.delete(matchId);
-    contestedTickCounts.delete(matchId);
   }, 5000);
 
   console.log(`Match ${matchId} voided. Reason: ${reason}`);

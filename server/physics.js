@@ -12,9 +12,9 @@ const TICK_RATE = parseInt(process.env.GAME_TICK_RATE || '30');
 
 // Derived constants
 const MAX_DELTA_PER_TICK = MAX_SPEED / TICK_RATE;
-const BOUNCE_DISTANCE = 30;
-const LARGE_BOUNCE_DISTANCE = 100;
-const MAX_BOUNCE_ITERATIONS = 3;
+const BOUNCE_DISTANCE = 10;
+const LARGE_BOUNCE_DISTANCE = 25;
+const MAX_BOUNCE_ITERATIONS = 2;
 
 // RPS win table: winner[attacker] = victim
 const BEATS = {
@@ -107,12 +107,11 @@ function getRpsLoser(role1, role2) {
 /**
  * Process collisions for all alive players
  * @param {Array} players - Array of player objects with {id, x, y, alive, role}
- * @returns {Object} { type: 'none'|'elimination'|'bounce', eliminations, bouncedPlayers }
+ * @returns {Object} { type: 'none'|'elimination', eliminations, bouncedPlayers }
  */
 function processCollisions(players) {
   const alive = players.filter(p => p.alive);
   const eliminations = [];
-  const overlappingPairs = [];
 
   // Check all pairs for overlaps
   for (let i = 0; i < alive.length; i++) {
@@ -121,54 +120,42 @@ function processCollisions(players) {
       const p2 = alive[j];
 
       if (isOverlapping(p1, p2)) {
-        overlappingPairs.push([p1, p2]);
-
         const loser = getRpsLoser(p1.role, p2.role);
         if (loser === 1) {
           eliminations.push({ winner: p2, loser: p1 });
         } else if (loser === 2) {
           eliminations.push({ winner: p1, loser: p2 });
         }
+        // Same role = no elimination, players can overlap freely
       }
     }
   }
 
-  // No overlaps
-  if (overlappingPairs.length === 0) {
+  // No overlaps or no eliminations
+  if (eliminations.length === 0) {
     return { type: 'none', eliminations: [], bouncedPlayers: [] };
   }
 
-  // Contested tick: 2+ eliminations would occur
-  if (eliminations.length >= 2) {
-    // Get all players involved in overlaps
-    const involvedPlayers = new Set();
-    for (const [p1, p2] of overlappingPairs) {
-      involvedPlayers.add(p1);
-      involvedPlayers.add(p2);
-    }
-
-    const bouncedPlayers = bounceApart(Array.from(involvedPlayers));
-    return { type: 'bounce', eliminations: [], bouncedPlayers };
-  }
-
-  // Single elimination
-  if (eliminations.length === 1) {
-    const { winner, loser } = eliminations[0];
-    loser.alive = false;
-    return {
-      type: 'elimination',
-      eliminations: [{
+  // Process all eliminations (even multiple simultaneous ones)
+  const processedEliminations = [];
+  for (const { winner, loser } of eliminations) {
+    // Only eliminate if loser is still alive (not already eliminated this tick)
+    if (loser.alive) {
+      loser.alive = false;
+      processedEliminations.push({
         winnerId: winner.id,
         loserId: loser.id,
         winnerRole: winner.role,
         loserRole: loser.role,
-      }],
-      bouncedPlayers: [],
-    };
+      });
+    }
   }
 
-  // Overlapping but no eliminations (same role - shouldn't happen)
-  return { type: 'none', eliminations: [], bouncedPlayers: [] };
+  return {
+    type: processedEliminations.length > 0 ? 'elimination' : 'none',
+    eliminations: processedEliminations,
+    bouncedPlayers: [],
+  };
 }
 
 // ============================================

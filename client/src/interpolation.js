@@ -13,7 +13,7 @@ const Interpolation = (function () {
 
   // Constants
   const SNAPSHOT_INTERVAL = 50; // 20 Hz = 50ms between snapshots
-  const BLEND_SPEED = 0.15; // How fast to blend local player toward server position
+  const BLEND_SPEED = 0.15; // How fast to blend local player toward server position (reduced for smoother feel)
 
   /**
    * Set the local player ID for special handling
@@ -39,15 +39,20 @@ const Interpolation = (function () {
         const dy = serverPlayer.y - localPlayerPosition.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance > 50) {
-          // Large discrepancy, snap closer
+        if (distance > 150) {
+          // Very large discrepancy (teleport/spawn), snap immediately
+          localPlayerPosition.x = serverPlayer.x;
+          localPlayerPosition.y = serverPlayer.y;
+        } else if (distance > 80) {
+          // Large discrepancy, blend moderately
           localPlayerPosition.x += dx * 0.3;
           localPlayerPosition.y += dy * 0.3;
-        } else if (distance > 5) {
-          // Small discrepancy, blend smoothly
+        } else if (distance > 40) {
+          // Medium discrepancy, blend slowly
           localPlayerPosition.x += dx * BLEND_SPEED;
           localPlayerPosition.y += dy * BLEND_SPEED;
         }
+        // Small discrepancies (< 40px) are ignored - trust client prediction
       }
     }
   }
@@ -69,30 +74,39 @@ const Interpolation = (function () {
       return { ...localPlayerPosition };
     }
 
-    // For other players, interpolate between snapshots
-    if (!previousSnapshot || !currentSnapshot) {
-      if (currentSnapshot) {
-        const player = currentSnapshot.players.find(p => p.id === playerId);
-        return player ? { x: player.x, y: player.y } : null;
-      }
+    // For other players, extrapolate from current snapshot
+    if (!currentSnapshot) {
       return null;
     }
 
-    const prev = previousSnapshot.players.find(p => p.id === playerId);
     const curr = currentSnapshot.players.find(p => p.id === playerId);
-
-    if (!prev || !curr) {
-      return curr ? { x: curr.x, y: curr.y } : null;
+    if (!curr) {
+      return null;
     }
 
-    // Calculate interpolation factor
-    const elapsed = performance.now() - snapshotTime;
-    const t = Math.min(elapsed / SNAPSHOT_INTERVAL, 1);
+    // If we have a previous snapshot, extrapolate based on velocity
+    if (previousSnapshot) {
+      const prev = previousSnapshot.players.find(p => p.id === playerId);
+      if (prev) {
+        // Calculate velocity from last two snapshots
+        const vx = curr.x - prev.x;
+        const vy = curr.y - prev.y;
 
-    return {
-      x: prev.x + (curr.x - prev.x) * t,
-      y: prev.y + (curr.y - prev.y) * t,
-    };
+        // Extrapolate forward based on time since snapshot
+        const elapsed = performance.now() - snapshotTime;
+        const t = elapsed / SNAPSHOT_INTERVAL;
+
+        // Extrapolate but cap at reasonable amount (1.5 snapshots worth)
+        const cappedT = Math.min(t, 1.5);
+
+        return {
+          x: curr.x + vx * cappedT,
+          y: curr.y + vy * cappedT,
+        };
+      }
+    }
+
+    return { x: curr.x, y: curr.y };
   }
 
   /**
