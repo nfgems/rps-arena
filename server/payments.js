@@ -185,18 +185,41 @@ async function sendUsdc(senderWallet, recipientAddress, amount) {
 }
 
 /**
+ * Get treasury wallet from mnemonic
+ * @returns {ethers.Wallet|null} Treasury wallet instance or null if not configured
+ */
+function getTreasuryWallet() {
+  const mnemonic = process.env.TREASURY_MNEMONIC;
+  if (!mnemonic) {
+    return null;
+  }
+
+  const provider = getProvider();
+  // Derive from path m/44'/60'/0'/0/0 (first account)
+  const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonic);
+  const derived = hdNode.derivePath("m/44'/60'/0'/0/0");
+  return new ethers.Wallet(derived.privateKey, provider);
+}
+
+/**
+ * Get treasury address (derived from mnemonic)
+ * @returns {string|null} Treasury address or null if not configured
+ */
+function getTreasuryAddress() {
+  const treasuryWallet = getTreasuryWallet();
+  return treasuryWallet ? treasuryWallet.address : null;
+}
+
+/**
  * Send winner payout from treasury
  * @param {string} winnerAddress - Winner's wallet address
  * @returns {Object} { success, txHash, error }
  */
 async function sendWinnerPayout(winnerAddress) {
-  const treasuryKey = process.env.MASTER_TREASURY_PRIVATE_KEY;
-  if (!treasuryKey) {
-    return { success: false, error: 'Treasury private key not configured' };
+  const treasuryWallet = getTreasuryWallet();
+  if (!treasuryWallet) {
+    return { success: false, error: 'Treasury mnemonic not configured' };
   }
-
-  const provider = getProvider();
-  const treasuryWallet = new ethers.Wallet(treasuryKey, provider);
 
   return sendUsdc(treasuryWallet, winnerAddress, WINNER_PAYOUT);
 }
@@ -225,13 +248,10 @@ async function sendRefundFromLobby(encryptedPrivateKey, recipientAddress) {
  * @returns {Object} { success, txHash, error }
  */
 async function sendRefundFromTreasury(recipientAddress) {
-  const treasuryKey = process.env.MASTER_TREASURY_PRIVATE_KEY;
-  if (!treasuryKey) {
-    return { success: false, error: 'Treasury private key not configured' };
+  const treasuryWallet = getTreasuryWallet();
+  if (!treasuryWallet) {
+    return { success: false, error: 'Treasury mnemonic not configured' };
   }
-
-  const provider = getProvider();
-  const treasuryWallet = new ethers.Wallet(treasuryKey, provider);
 
   return sendUsdc(treasuryWallet, recipientAddress, BUY_IN_AMOUNT);
 }
@@ -264,7 +284,7 @@ async function getUsdcBalance(address) {
  * @returns {Object} { balance, formatted }
  */
 async function getTreasuryBalance() {
-  const treasuryAddress = process.env.MASTER_TREASURY_ADDRESS;
+  const treasuryAddress = getTreasuryAddress();
   if (!treasuryAddress) {
     return { balance: '0', formatted: '0.00' };
   }
@@ -295,6 +315,10 @@ module.exports = {
   sendWinnerPayout,
   sendRefundFromLobby,
   sendRefundFromTreasury,
+
+  // Treasury
+  getTreasuryWallet,
+  getTreasuryAddress,
 
   // Balance
   getUsdcBalance,

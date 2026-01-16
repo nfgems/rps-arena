@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run init-db:*)"
+    ]
+  }
+}

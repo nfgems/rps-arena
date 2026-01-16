@@ -63,13 +63,13 @@ function decryptPrivateKey(encryptedData, encryptionKey) {
 /**
  * Derive a wallet from a mnemonic seed phrase
  * @param {string} mnemonic - 12 or 24 word seed phrase
- * @param {string} path - Derivation path (e.g., "m/44'/60'/0'/0/1")
+ * @param {number} index - Account index (0, 1, 2, etc.)
  * @returns {Object} { address, privateKey }
  */
-function deriveWallet(mnemonic, path) {
-  // ethers v6 uses HDNodeWallet
-  const hdNode = ethers.HDNodeWallet.fromPhrase(mnemonic);
-  const wallet = hdNode.derivePath(path);
+function deriveWallet(mnemonic, index) {
+  // ethers v6: fromPhrase with derivation path
+  const path = `m/44'/60'/0'/0/${index}`;
+  const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic, undefined, path);
 
   return {
     address: wallet.address,
@@ -87,8 +87,7 @@ function generateLobbyWallets(mnemonic, encryptionKey) {
   const lobbies = [];
 
   for (let i = 1; i <= 10; i++) {
-    const path = `m/44'/60'/0'/0/${i}`;
-    const wallet = deriveWallet(mnemonic, path);
+    const wallet = deriveWallet(mnemonic, i);
 
     lobbies.push({
       id: i,
