@@ -20,10 +20,11 @@ const activeLobbies = new Map();
  * Called once on server startup
  */
 async function initializeLobbies() {
+  const lobbyCount = parseInt(process.env.LOBBY_COUNT || '10');
   const existingLobbies = db.getAllLobbies();
 
-  if (existingLobbies.length === 10) {
-    console.log('Lobbies already initialized');
+  if (existingLobbies.length === lobbyCount) {
+    console.log(`Lobbies already initialized (${lobbyCount})`);
     // Load into memory
     for (const lobby of existingLobbies) {
       activeLobbies.set(lobby.id, {
@@ -47,7 +48,7 @@ async function initializeLobbies() {
     const tempMnemonic = wallet.generateMnemonic();
     console.log('Development mnemonic (DO NOT USE IN PRODUCTION):', tempMnemonic);
 
-    const lobbies = wallet.generateLobbyWallets(tempMnemonic, encryptionKey || 'dev-key');
+    const lobbies = wallet.generateLobbyWallets(tempMnemonic, encryptionKey || 'dev-key', lobbyCount);
     db.initializeLobbies(lobbies);
 
     for (const lobby of lobbies) {
@@ -64,7 +65,7 @@ async function initializeLobbies() {
       });
     }
   } else {
-    const lobbies = wallet.generateLobbyWallets(mnemonic, encryptionKey);
+    const lobbies = wallet.generateLobbyWallets(mnemonic, encryptionKey, lobbyCount);
     db.initializeLobbies(lobbies);
 
     for (const lobby of lobbies) {
@@ -82,7 +83,7 @@ async function initializeLobbies() {
     }
   }
 
-  console.log('Initialized 10 lobbies');
+  console.log(`Initialized ${lobbyCount} lobbies`);
 }
 
 // ============================================

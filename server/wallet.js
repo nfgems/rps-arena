@@ -83,10 +83,10 @@ function deriveWallet(mnemonic, index) {
  * @param {string} encryptionKey - Key for encrypting private keys
  * @returns {Array} Array of { id, depositAddress, encryptedPrivateKey }
  */
-function generateLobbyWallets(mnemonic, encryptionKey) {
+function generateLobbyWallets(mnemonic, encryptionKey, count = 10) {
   const lobbies = [];
 
-  for (let i = 1; i <= 10; i++) {
+  for (let i = 1; i <= count; i++) {
     const wallet = deriveWallet(mnemonic, i);
 
     lobbies.push({
