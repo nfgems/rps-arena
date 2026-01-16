@@ -179,17 +179,23 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress) {
     return { success: false, error: 'LOBBY_TIMEOUT' };
   }
 
-  // Verify payment on blockchain
-  const verification = await payments.verifyPayment(
-    paymentTxHash,
-    lobby.deposit_address,
-    userWalletAddress,
-    payments.BUY_IN_AMOUNT
-  );
+  // Verify payment on blockchain (skip in dev mode)
+  const devMode = process.env.NODE_ENV !== 'production' && process.env.DEV_MODE === 'true';
 
-  if (!verification.valid) {
-    console.log('Payment verification failed:', verification.error);
-    return { success: false, error: 'PAYMENT_NOT_CONFIRMED' };
+  if (!devMode) {
+    const verification = await payments.verifyPayment(
+      paymentTxHash,
+      lobby.deposit_address,
+      userWalletAddress,
+      payments.BUY_IN_AMOUNT
+    );
+
+    if (!verification.valid) {
+      console.log('Payment verification failed:', verification.error);
+      return { success: false, error: 'PAYMENT_NOT_CONFIRMED' };
+    }
+  } else {
+    console.log('DEV_MODE: Skipping payment verification');
   }
 
   // Double-check lobby hasn't filled while we were verifying

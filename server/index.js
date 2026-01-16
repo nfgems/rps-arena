@@ -16,6 +16,7 @@ const protocol = require('./protocol');
 const lobby = require('./lobby');
 const match = require('./match');
 const payments = require('./payments');
+const bot = require('./bot');
 
 // ============================================
 // Server Setup
@@ -73,6 +74,93 @@ app.post('/api/logout', (req, res) => {
 app.get('/api/lobbies', (req, res) => {
   const lobbies = lobby.getLobbyList();
   res.json({ lobbies });
+});
+
+// ============================================
+// Dev Mode Status
+// ============================================
+
+app.get('/api/dev-mode', (req, res) => {
+  const devMode = process.env.NODE_ENV !== 'production' && process.env.DEV_MODE === 'true';
+  res.json({ devMode });
+});
+
+// ============================================
+// Bot Management (Dev Mode Only)
+// ============================================
+
+// Add a bot to a lobby
+app.post('/api/bot/add', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
+  }
+
+  const { lobbyId } = req.body;
+  if (!lobbyId) {
+    return res.status(400).json({ success: false, error: 'lobbyId required' });
+  }
+
+  const result = await bot.addBotToLobby(parseInt(lobbyId));
+
+  if (result.success) {
+    // Broadcast updated lobby list
+    broadcastLobbyList();
+    res.json({ success: true, bot: { userId: result.bot.userId, username: result.bot.username } });
+  } else {
+    res.status(400).json({ success: false, error: result.error });
+  }
+});
+
+// Fill a lobby with bots
+app.post('/api/bot/fill', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
+  }
+
+  const { lobbyId } = req.body;
+  if (!lobbyId) {
+    return res.status(400).json({ success: false, error: 'lobbyId required' });
+  }
+
+  const result = await bot.fillLobbyWithBots(parseInt(lobbyId));
+
+  if (result.success) {
+    broadcastLobbyList();
+    res.json({ success: true, botsAdded: result.botsAdded });
+  } else {
+    res.status(400).json({ success: false, error: result.error });
+  }
+});
+
+// Get active bots
+app.get('/api/bot/list', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
+  }
+
+  const bots = bot.getActiveBots();
+  res.json({ success: true, bots });
+});
+
+// Remove a bot
+app.post('/api/bot/remove', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
+  }
+
+  const { userId } = req.body;
+  if (!userId) {
+    return res.status(400).json({ success: false, error: 'userId required' });
+  }
+
+  const result = bot.removeBot(userId);
+
+  if (result.success) {
+    broadcastLobbyList();
+    res.json({ success: true });
+  } else {
+    res.status(400).json({ success: false, error: result.error });
+  }
 });
 
 // ============================================

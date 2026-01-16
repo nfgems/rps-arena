@@ -230,6 +230,16 @@ body {
   color: var(--success);
 }
 
+.lobby-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.add-bots-btn {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
 .ping-display {
   position: fixed;
   bottom: 16px;

@@ -22,6 +22,7 @@ const UI = (function () {
   let currentScreen = 'landing';
   let currentLobbyId = null;
   let myRole = null;
+  let devMode = false;
 
   /**
    * Initialize UI
@@ -47,7 +48,26 @@ const UI = (function () {
     // Set up event listeners
     setupEventListeners();
 
+    // Check dev mode
+    checkDevMode();
+
     console.log('UI initialized');
+  }
+
+  /**
+   * Check if server is in dev mode
+   */
+  async function checkDevMode() {
+    try {
+      const res = await fetch('/api/dev-mode');
+      const data = await res.json();
+      devMode = data.devMode;
+      if (devMode) {
+        console.log('DEV MODE ENABLED - Payment verification skipped');
+      }
+    } catch (e) {
+      console.log('Could not check dev mode');
+    }
   }
 
   /**
@@ -363,23 +383,75 @@ const UI = (function () {
         lobby.status === 'waiting' ? `${lobby.playerCount}/3 - Waiting` :
           lobby.status === 'in_progress' ? 'In Progress' : `${lobby.playerCount}/3`;
 
+      const joinDisabled = lobby.status === 'in_progress' || lobby.playerCount >= 3;
+      const joinText = devMode ? 'Join (Free)' : 'Join (1 USDC)';
+
       item.innerHTML = `
         <div class="lobby-info">
           <span class="lobby-name">Lobby #${lobby.id}</span>
           <span class="lobby-status ${statusClass}">${statusText}</span>
         </div>
-        <button class="btn btn-primary"
-                ${lobby.status === 'in_progress' || lobby.playerCount >= 3 ? 'disabled' : ''}
-                data-lobby-id="${lobby.id}"
-                data-deposit-address="${lobby.depositAddress}">
-          Join (1 USDC)
-        </button>
+        <div class="lobby-actions">
+          <button class="btn btn-primary join-btn"
+                  ${joinDisabled ? 'disabled' : ''}
+                  data-lobby-id="${lobby.id}"
+                  data-deposit-address="${lobby.depositAddress}">
+            ${joinText}
+          </button>
+          ${devMode ? `
+            <button class="btn btn-secondary add-bots-btn"
+                    ${lobby.status === 'in_progress' || lobby.playerCount >= 3 ? 'disabled' : ''}
+                    data-lobby-id="${lobby.id}">
+              +Bots
+            </button>
+          ` : ''}
+        </div>
       `;
 
-      const btn = item.querySelector('button');
-      btn.addEventListener('click', () => showPaymentModal(lobby.id, lobby.depositAddress));
+      const joinBtn = item.querySelector('.join-btn');
+      if (devMode) {
+        joinBtn.addEventListener('click', () => handleDevJoin(lobby.id));
+      } else {
+        joinBtn.addEventListener('click', () => showPaymentModal(lobby.id, lobby.depositAddress));
+      }
+
+      if (devMode) {
+        const botsBtn = item.querySelector('.add-bots-btn');
+        if (botsBtn) {
+          botsBtn.addEventListener('click', () => handleAddBots(lobby.id));
+        }
+      }
 
       container.appendChild(item);
+    }
+  }
+
+  /**
+   * Handle dev mode join (no payment required)
+   */
+  function handleDevJoin(lobbyId) {
+    const fakeTxHash = `0xdev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    Network.joinLobby(lobbyId, fakeTxHash);
+  }
+
+  /**
+   * Handle adding bots to a lobby
+   */
+  async function handleAddBots(lobbyId) {
+    try {
+      const res = await fetch('/api/bot/fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lobbyId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        console.log(`Added ${data.botsAdded} bots to lobby ${lobbyId}`);
+      } else {
+        console.error('Failed to add bots:', data.error);
+      }
+    } catch (e) {
+      console.error('Failed to add bots:', e);
     }
   }
 
