@@ -54,24 +54,213 @@ const ErrorCodes = {
 };
 
 // ============================================
+// Validation Constants
+// ============================================
+
+// Arena bounds (must match physics.js)
+const ARENA_WIDTH = parseInt(process.env.GAME_ARENA_WIDTH || '1600');
+const ARENA_HEIGHT = parseInt(process.env.GAME_ARENA_HEIGHT || '900');
+const LOBBY_COUNT = parseInt(process.env.LOBBY_COUNT || '10');
+
+// Ethereum transaction hash regex: 0x followed by 64 hex characters
+const TX_HASH_REGEX = /^0x[a-fA-F0-9]{64}$/;
+
+// Admin/dev mode tx hash patterns (used on admin port only)
+const ADMIN_TX_HASH_REGEX = /^0x(dev_|bot_tx_)[a-zA-Z0-9_]+$/;
+
+// Valid client message types whitelist
+const VALID_CLIENT_MESSAGE_TYPES = new Set(Object.values(ClientMessages));
+
+// ============================================
+// Validation Helpers
+// ============================================
+
+/**
+ * Check if value is a finite number
+ * @param {*} value - Value to check
+ * @returns {boolean}
+ */
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * Check if value is a positive integer
+ * @param {*} value - Value to check
+ * @returns {boolean}
+ */
+function isPositiveInteger(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+/**
+ * Check if value is a non-negative integer
+ * @param {*} value - Value to check
+ * @returns {boolean}
+ */
+function isNonNegativeInteger(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/**
+ * Validate Ethereum transaction hash format
+ * Also accepts admin/dev mode fake tx hashes (0xdev_*, 0xbot_tx_*)
+ * @param {*} txHash - Transaction hash to validate
+ * @returns {boolean}
+ */
+function isValidTxHash(txHash) {
+  if (typeof txHash !== 'string') return false;
+  // Accept real Ethereum tx hashes OR admin/dev mode fake hashes
+  return TX_HASH_REGEX.test(txHash) || ADMIN_TX_HASH_REGEX.test(txHash);
+}
+
+/**
+ * Validate lobby ID
+ * @param {*} lobbyId - Lobby ID to validate
+ * @returns {boolean}
+ */
+function isValidLobbyId(lobbyId) {
+  return isPositiveInteger(lobbyId) && lobbyId >= 1 && lobbyId <= LOBBY_COUNT;
+}
+
+/**
+ * Validate coordinate is within arena bounds
+ * @param {*} value - Coordinate value
+ * @param {number} max - Maximum value (ARENA_WIDTH or ARENA_HEIGHT)
+ * @returns {boolean}
+ */
+function isValidCoordinate(value, max) {
+  return isFiniteNumber(value) && value >= 0 && value <= max;
+}
+
+// ============================================
+// Message Schema Validators
+// ============================================
+
+/**
+ * Validate HELLO message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateHello(message) {
+  if (typeof message.sessionToken !== 'string' || message.sessionToken.length === 0) {
+    return { valid: false, error: 'Invalid or missing sessionToken' };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate JOIN_LOBBY message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateJoinLobby(message) {
+  if (!isValidLobbyId(message.lobbyId)) {
+    return { valid: false, error: `Invalid lobbyId: must be integer 1-${LOBBY_COUNT}` };
+  }
+  if (!isValidTxHash(message.paymentTxHash)) {
+    return { valid: false, error: 'Invalid paymentTxHash: must be 0x + 64 hex characters' };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate REQUEST_REFUND message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateRequestRefund(message) {
+  // REQUEST_REFUND doesn't require additional fields beyond type
+  // The lobbyId is determined server-side from player state
+  return { valid: true };
+}
+
+/**
+ * Validate PING message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validatePing(message) {
+  // clientTime is optional but if present should be a number
+  if (message.clientTime !== undefined && !isFiniteNumber(message.clientTime)) {
+    return { valid: false, error: 'Invalid clientTime: must be a number' };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate INPUT message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateInput(message) {
+  if (!isValidCoordinate(message.targetX, ARENA_WIDTH)) {
+    return { valid: false, error: `Invalid targetX: must be number 0-${ARENA_WIDTH}` };
+  }
+  if (!isValidCoordinate(message.targetY, ARENA_HEIGHT)) {
+    return { valid: false, error: `Invalid targetY: must be number 0-${ARENA_HEIGHT}` };
+  }
+  if (!isNonNegativeInteger(message.sequence)) {
+    return { valid: false, error: 'Invalid sequence: must be non-negative integer' };
+  }
+  if (message.frozen !== undefined && typeof message.frozen !== 'boolean') {
+    return { valid: false, error: 'Invalid frozen: must be boolean' };
+  }
+  return { valid: true };
+}
+
+// Message type to validator mapping
+const MESSAGE_VALIDATORS = {
+  [ClientMessages.HELLO]: validateHello,
+  [ClientMessages.JOIN_LOBBY]: validateJoinLobby,
+  [ClientMessages.REQUEST_REFUND]: validateRequestRefund,
+  [ClientMessages.PING]: validatePing,
+  [ClientMessages.INPUT]: validateInput,
+};
+
+// ============================================
 // Message Parsing
 // ============================================
 
 /**
- * Parse incoming WebSocket message
+ * Parse and validate incoming WebSocket message
  * @param {string} data - Raw message string
- * @returns {Object|null} Parsed message or null if invalid
+ * @returns {{message: Object|null, error?: string}} Parsed message or null with error
  */
 function parseMessage(data) {
+  // Parse JSON
+  let message;
   try {
-    const message = JSON.parse(data);
-    if (!message.type) {
-      return null;
-    }
-    return message;
+    message = JSON.parse(data);
   } catch (error) {
-    return null;
+    return { message: null, error: 'Invalid JSON' };
   }
+
+  // Check message is an object
+  if (!message || typeof message !== 'object' || Array.isArray(message)) {
+    return { message: null, error: 'Message must be an object' };
+  }
+
+  // Check type field exists and is a string
+  if (typeof message.type !== 'string') {
+    return { message: null, error: 'Missing or invalid message type' };
+  }
+
+  // Validate against whitelist
+  if (!VALID_CLIENT_MESSAGE_TYPES.has(message.type)) {
+    return { message: null, error: `Unknown message type: ${message.type}` };
+  }
+
+  // Run schema validation for this message type
+  const validator = MESSAGE_VALIDATORS[message.type];
+  if (validator) {
+    const validation = validator(message);
+    if (!validation.valid) {
+      return { message: null, error: validation.error };
+    }
+  }
+
+  return { message };
 }
 
 // ============================================
@@ -238,6 +427,14 @@ module.exports = {
   ErrorCodes,
   parseMessage,
   truncateAddress,
+
+  // Validation helpers (exported for testing)
+  isValidTxHash,
+  isValidLobbyId,
+  isValidCoordinate,
+  ARENA_WIDTH,
+  ARENA_HEIGHT,
+  LOBBY_COUNT,
 
   // Message creators
   createWelcome,

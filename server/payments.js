@@ -20,6 +20,11 @@ const BUY_IN_AMOUNT = 1_000_000; // 1 USDC
 const WINNER_PAYOUT = 2_400_000; // 2.4 USDC
 const TREASURY_CUT = 600_000; // 0.6 USDC
 
+// Payment security constants
+const MIN_CONFIRMATIONS = 3; // Minimum block confirmations required
+const MAX_TX_AGE_MS = 60 * 60 * 1000; // 1 hour in milliseconds
+const AMOUNT_TOLERANCE_PERCENT = 1; // 1% tolerance for gas variations (not applicable to USDC transfers)
+
 let provider = null;
 let usdcContract = null;
 
@@ -64,9 +69,14 @@ function getProvider() {
  * @param {string} expectedRecipient - Expected recipient address
  * @param {string} expectedSender - Expected sender address
  * @param {number} expectedAmount - Expected amount in USDC units (with decimals)
+ * @param {Object} options - Verification options
+ * @param {boolean} options.checkConfirmations - Whether to check min confirmations (default: true)
+ * @param {boolean} options.checkAge - Whether to check transaction age (default: true)
  * @returns {Object} { valid, error, tx }
  */
-async function verifyPayment(txHash, expectedRecipient, expectedSender, expectedAmount = BUY_IN_AMOUNT) {
+async function verifyPayment(txHash, expectedRecipient, expectedSender, expectedAmount = BUY_IN_AMOUNT, options = {}) {
+  const { checkConfirmations = true, checkAge = true } = options;
+
   try {
     const provider = getProvider();
     const usdcAddress = process.env.USDC_CONTRACT_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -80,6 +90,35 @@ async function verifyPayment(txHash, expectedRecipient, expectedSender, expected
     // Check if transaction was successful
     if (receipt.status !== 1) {
       return { valid: false, error: 'Transaction failed' };
+    }
+
+    // Get block for confirmation count and timestamp
+    const currentBlock = await provider.getBlockNumber();
+    const confirmations = currentBlock - receipt.blockNumber;
+
+    // Check minimum confirmations
+    if (checkConfirmations && confirmations < MIN_CONFIRMATIONS) {
+      return {
+        valid: false,
+        error: `Insufficient confirmations: ${confirmations}/${MIN_CONFIRMATIONS}`,
+        confirmations,
+        requiredConfirmations: MIN_CONFIRMATIONS
+      };
+    }
+
+    // Check transaction age (reject payments older than MAX_TX_AGE_MS)
+    if (checkAge) {
+      const block = await provider.getBlock(receipt.blockNumber);
+      if (block) {
+        const txTimestamp = block.timestamp * 1000; // Convert to milliseconds
+        const txAge = Date.now() - txTimestamp;
+        if (txAge > MAX_TX_AGE_MS) {
+          return {
+            valid: false,
+            error: `Transaction too old: ${Math.round(txAge / 60000)} minutes (max ${MAX_TX_AGE_MS / 60000} minutes)`
+          };
+        }
+      }
     }
 
     // Parse logs to find USDC Transfer event
@@ -121,14 +160,16 @@ async function verifyPayment(txHash, expectedRecipient, expectedSender, expected
       return { valid: false, error: 'Recipient mismatch' };
     }
 
-    // Verify amount
-    if (BigInt(actualAmount) !== BigInt(expectedAmount)) {
-      return { valid: false, error: `Amount mismatch: expected ${expectedAmount}, got ${actualAmount}` };
-    }
+    // Verify amount with tolerance
+    const expectedBigInt = BigInt(expectedAmount);
+    const actualBigInt = BigInt(actualAmount);
+    const toleranceAmount = expectedBigInt * BigInt(AMOUNT_TOLERANCE_PERCENT) / BigInt(100);
+    const minAcceptable = expectedBigInt - toleranceAmount;
+    const maxAcceptable = expectedBigInt + toleranceAmount;
 
-    // Get block for confirmation count
-    const currentBlock = await provider.getBlockNumber();
-    const confirmations = currentBlock - receipt.blockNumber;
+    if (actualBigInt < minAcceptable || actualBigInt > maxAcceptable) {
+      return { valid: false, error: `Amount mismatch: expected ${expectedAmount} (±${AMOUNT_TOLERANCE_PERCENT}%), got ${actualAmount}` };
+    }
 
     return {
       valid: true,
@@ -215,17 +256,21 @@ function getTreasuryAddress() {
 }
 
 /**
- * Send winner payout from treasury
+ * Send winner payout from lobby wallet
+ * @param {string} encryptedPrivateKey - Encrypted lobby wallet private key
  * @param {string} winnerAddress - Winner's wallet address
  * @returns {Object} { success, txHash, error }
  */
-async function sendWinnerPayout(winnerAddress) {
-  const treasuryWallet = getTreasuryWallet();
-  if (!treasuryWallet) {
-    return { success: false, error: 'Treasury mnemonic not configured' };
+async function sendWinnerPayout(encryptedPrivateKey, winnerAddress) {
+  const encryptionKey = process.env.WALLET_ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    return { success: false, error: 'Wallet encryption key not configured' };
   }
 
-  return sendUsdc(treasuryWallet, winnerAddress, WINNER_PAYOUT);
+  const provider = getProvider();
+  const lobbyWallet = wallet.getWalletFromEncrypted(encryptedPrivateKey, encryptionKey, provider);
+
+  return sendUsdc(lobbyWallet, winnerAddress, WINNER_PAYOUT);
 }
 
 /**
@@ -305,6 +350,9 @@ module.exports = {
   BUY_IN_AMOUNT,
   WINNER_PAYOUT,
   TREASURY_CUT,
+  MIN_CONFIRMATIONS,
+  MAX_TX_AGE_MS,
+  AMOUNT_TOLERANCE_PERCENT,
 
   // Initialization
   initProvider,

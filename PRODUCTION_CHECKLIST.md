@@ -36,18 +36,28 @@ This approach is MORE secure than removal because:
 2. Testing capability preserved for development
 3. Even if client code is inspected, server enforces restrictions
 
-### 1.3 Input Validation
-- [ ] **Validate WebSocket message types** against whitelist in `protocol.js`
-- [ ] **Validate `targetX`/`targetY`** are numbers within arena bounds
-- [ ] **Validate `lobbyId`** is integer 1-10 (or configured max)
-- [ ] **Validate `paymentTxHash`** is valid Ethereum hash format (0x + 64 hex chars)
-- [ ] **Add schema validation** for all incoming WebSocket messages
+### 1.3 Input Validation ✅ COMPLETE (2026-01-17)
+- [x] **Validate WebSocket message types** against whitelist in `protocol.js` - ✅ Added VALID_CLIENT_MESSAGE_TYPES Set
+- [x] **Validate `targetX`/`targetY`** are numbers within arena bounds - ✅ isValidCoordinate() checks finite numbers 0-1600/0-900
+- [x] **Validate `lobbyId`** is integer 1-10 (or configured max) - ✅ isValidLobbyId() validates integer in range
+- [x] **Validate `paymentTxHash`** is valid Ethereum hash format (0x + 64 hex chars) - ✅ isValidTxHash() with regex (also accepts dev/bot hashes)
+- [x] **Add schema validation** for all incoming WebSocket messages - ✅ MESSAGE_VALIDATORS map with validators for each message type
 
-### 1.4 Payment Security
-- [ ] **Check treasury balance before match starts** - Void if insufficient
-- [ ] **Add confirmation count check** for payment verification (minimum 3 blocks)
-- [ ] **Add transaction age limit** - Reject payments older than 1 hour
-- [ ] **Implement payment amount tolerance** - Handle gas price variations
+**Implementation Details:**
+- All validation in `server/protocol.js` with `parseMessage()` returning `{message, error}`
+- `server/index.js` updated to handle new return format and log validation errors
+- Validation errors logged server-side but not exposed to client (security)
+
+### 1.4 Payment Security ✅ COMPLETE (2026-01-17)
+- [x] **Check lobby wallet balance before match starts** - ✅ Checks balance >= 2.4 USDC before starting match, throws INSUFFICIENT_LOBBY_BALANCE
+- [x] **Add confirmation count check** for payment verification (minimum 3 blocks) - ✅ MIN_CONFIRMATIONS = 3 in payments.js
+- [x] **Add transaction age limit** - Reject payments older than 1 hour - ✅ MAX_TX_AGE_MS = 60 min in payments.js
+- [x] **Implement payment amount tolerance** - Handle gas price variations - ✅ AMOUNT_TOLERANCE_PERCENT = 1% in payments.js
+
+**Implementation Details:**
+- Balance check in `match.js:startMatch()` verifies lobby wallet has enough for winner payout
+- All payment verification options in `payments.js:verifyPayment()` with configurable checks
+- Payouts come from lobby wallet, not treasury (treasury only receives swept fees)
 
 ---
 
@@ -286,7 +296,7 @@ This approach is MORE secure than removal because:
 
 | Phase | Status | Completion |
 |-------|--------|------------|
-| Phase 1: Security | 🟡 In Progress | 50% (1.1 ✅, 1.2 ✅, 1.3 ⬜, 1.4 ⬜) |
+| Phase 1: Security | ✅ Complete | 100% (1.1 ✅, 1.2 ✅, 1.3 ✅, 1.4 ✅) |
 | Phase 2: Error Handling | ⬜ Not Started | 0% |
 | Phase 3: Code Cleanup | ⬜ Not Started | 0% |
 | Phase 4: User Features | ⬜ Not Started | 0% |

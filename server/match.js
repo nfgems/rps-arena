@@ -22,7 +22,7 @@ const activeMatches = new Map();
  * @param {number} lobbyId - Lobby ID
  * @returns {Object} Match object
  */
-function startMatch(lobbyId) {
+async function startMatch(lobbyId) {
   const lobbyData = lobby.getLobby(lobbyId);
   if (!lobbyData || lobbyData.status !== 'ready') {
     throw new Error('Lobby not ready');
@@ -31,6 +31,14 @@ function startMatch(lobbyId) {
   const players = lobbyData.players.filter(p => !p.refunded_at);
   if (players.length !== 3) {
     throw new Error('Need exactly 3 players');
+  }
+
+  // Check lobby wallet balance before starting match (should have 3 USDC from 3 players)
+  const lobbyBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
+  const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
+  if (BigInt(lobbyBalance.balance) < BigInt(payments.WINNER_PAYOUT)) {
+    console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${payments.WINNER_PAYOUT / 1_000_000} USDC for payout)`);
+    throw new Error('INSUFFICIENT_LOBBY_BALANCE');
   }
 
   // Generate RNG seed
@@ -306,9 +314,13 @@ async function endMatch(match, winner, reason) {
   logger.logMatchEnd(match.id, match.tick, winner?.id || null, reason);
 
   if (winner) {
-    // Process winner payout
+    // Process winner payout from lobby wallet
     const winnerPlayer = match.players.find(p => p.id === winner.id);
-    const payoutResult = await payments.sendWinnerPayout(winnerPlayer.walletAddress);
+    const lobbyData = lobby.getLobby(match.lobbyId);
+    const payoutResult = await payments.sendWinnerPayout(
+      lobbyData.deposit_private_key_encrypted,
+      winnerPlayer.walletAddress
+    );
 
     if (payoutResult.success) {
       db.setMatchWinner(match.id, winner.id, 2.4, payoutResult.txHash);

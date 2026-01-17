@@ -131,9 +131,9 @@ async function addBotToLobby(lobbyId) {
 
   // If lobby is ready, start the match
   if (lobbyData.status === 'ready' && newPlayerCount === 3) {
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        const newMatch = match.startMatch(lobbyId);
+        const newMatch = await match.startMatch(lobbyId);
         // Register bots in the match
         for (const [userId, bot] of activeBots) {
           if (bot.lobbyId === lobbyId) {

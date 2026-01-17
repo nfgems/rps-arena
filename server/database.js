@@ -173,7 +173,7 @@ function updateLobbyStatus(lobbyId, status, matchId = null) {
 function setLobbyFirstJoin(lobbyId) {
   const db = getDb();
   const now = new Date().toISOString();
-  const timeout = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+  const timeout = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
   const stmt = db.prepare(`
     UPDATE lobbies SET first_join_at = ?, timeout_at = ?, status = 'waiting'
     WHERE id = ? AND first_join_at IS NULL

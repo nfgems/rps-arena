@@ -280,8 +280,14 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
     }, 5000);
 
     ws.on('message', async (data) => {
-      const message = protocol.parseMessage(data.toString());
-      if (!message) return;
+      const { message, error } = protocol.parseMessage(data.toString());
+      if (!message) {
+        // Log validation errors for debugging (not shown to client for security)
+        if (error) {
+          console.log(`[VALIDATION] Invalid message from ${ip}: ${error}`);
+        }
+        return;
+      }
 
       // Rate limiting
       if (!checkRateLimit(ip, message.type)) {
@@ -446,12 +452,17 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
 
       // Check if lobby is ready to start match
       if (lobbyData.status === 'ready' && players.length === 3) {
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
-            const newMatch = match.startMatch(lobbyId);
+            const newMatch = await match.startMatch(lobbyId);
             currentMatchId = newMatch.id;
           } catch (error) {
             console.error('Failed to start match:', error);
+            // If lobby balance is insufficient, void the lobby and refund players
+            if (error.message === 'INSUFFICIENT_LOBBY_BALANCE') {
+              await lobby.processTreasuryRefund(lobbyId, 'insufficient_lobby_balance');
+              broadcastLobbyList();
+            }
           }
         }, 100); // Small delay to ensure all clients received lobby update
       }
