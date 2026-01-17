@@ -1,6 +1,9 @@
 /**
  * RPS Arena - Main Server Entry Point
  * WebSocket game server with Express for static files
+ *
+ * Port 3000 (PUBLIC_PORT): Production game server - payments required
+ * Port 3001 (ADMIN_PORT): Admin/testing server - free joins, bot management
  */
 
 require('dotenv').config();
@@ -19,82 +22,99 @@ const payments = require('./payments');
 const bot = require('./bot');
 
 // ============================================
-// Server Setup
+// Server Setup - Dual Port Architecture
 // ============================================
 
+// Production server (port 3000) - payments required
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 3000;
+// Admin server (port 3001) - free joins, bot management
+const adminApp = express();
+const adminServer = http.createServer(adminApp);
+const adminWss = new WebSocket.Server({ server: adminServer });
 
-// Serve static files from client directory
+const PUBLIC_PORT = process.env.PORT || 3000;
+const ADMIN_PORT = process.env.ADMIN_PORT || 3001;
+
+// Serve static files from client directory (both servers)
 app.use(express.static(path.join(__dirname, '..', 'client')));
 app.use(express.json());
 
-// ============================================
-// HTTP Routes
-// ============================================
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
-});
-
-// Authentication endpoint
-app.post('/api/auth', (req, res) => {
-  const { walletAddress, signature, timestamp } = req.body;
-
-  const result = auth.authenticateWallet(walletAddress, signature, timestamp);
-
-  if (result.success) {
-    res.json({
-      success: true,
-      token: result.token,
-      user: result.user,
-    });
-  } else {
-    res.status(401).json({
-      success: false,
-      error: result.error,
-    });
-  }
-});
-
-// Logout endpoint
-app.post('/api/logout', (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token) {
-    auth.logout(token);
-  }
-  res.json({ success: true });
-});
-
-// Get lobbies (REST fallback)
-app.get('/api/lobbies', (req, res) => {
-  const lobbies = lobby.getLobbyList();
-  res.json({ lobbies });
-});
+adminApp.use(express.static(path.join(__dirname, '..', 'client')));
+adminApp.use(express.json());
 
 // ============================================
-// Dev Mode Status
+// HTTP Routes - Shared (both servers)
 // ============================================
 
+function setupSharedRoutes(expressApp) {
+  // Health check
+  expressApp.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: Date.now() });
+  });
+
+  // Authentication endpoint
+  expressApp.post('/api/auth', (req, res) => {
+    const { walletAddress, signature, timestamp } = req.body;
+
+    const result = auth.authenticateWallet(walletAddress, signature, timestamp);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        token: result.token,
+        user: result.user,
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        error: result.error,
+      });
+    }
+  });
+
+  // Logout endpoint
+  expressApp.post('/api/logout', (req, res) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      auth.logout(token);
+    }
+    res.json({ success: true });
+  });
+
+  // Get lobbies (REST fallback)
+  expressApp.get('/api/lobbies', (req, res) => {
+    const lobbies = lobby.getLobbyList();
+    res.json({ lobbies });
+  });
+}
+
+// Apply shared routes to both servers
+setupSharedRoutes(app);
+setupSharedRoutes(adminApp);
+
+// ============================================
+// HTTP Routes - Production Server (Port 3000)
+// ============================================
+
+// Production server returns devMode: false always
 app.get('/api/dev-mode', (req, res) => {
-  const devMode = process.env.NODE_ENV !== 'production' && process.env.DEV_MODE === 'true';
-  res.json({ devMode });
+  res.json({ devMode: false });
 });
 
 // ============================================
-// Bot Management (Dev Mode Only)
+// HTTP Routes - Admin Server Only (Port 3001)
 // ============================================
+
+// Admin server returns devMode: true (enables free joins and bot UI)
+adminApp.get('/api/dev-mode', (req, res) => {
+  res.json({ devMode: true });
+});
 
 // Add a bot to a lobby
-app.post('/api/bot/add', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
-  }
-
+adminApp.post('/api/bot/add', async (req, res) => {
   const { lobbyId } = req.body;
   if (!lobbyId) {
     return res.status(400).json({ success: false, error: 'lobbyId required' });
@@ -103,7 +123,7 @@ app.post('/api/bot/add', async (req, res) => {
   const result = await bot.addBotToLobby(parseInt(lobbyId));
 
   if (result.success) {
-    // Broadcast updated lobby list
+    // Broadcast updated lobby list to both servers
     broadcastLobbyList();
     res.json({ success: true, bot: { userId: result.bot.userId, username: result.bot.username } });
   } else {
@@ -112,11 +132,7 @@ app.post('/api/bot/add', async (req, res) => {
 });
 
 // Fill a lobby with bots
-app.post('/api/bot/fill', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
-  }
-
+adminApp.post('/api/bot/fill', async (req, res) => {
   const { lobbyId } = req.body;
   if (!lobbyId) {
     return res.status(400).json({ success: false, error: 'lobbyId required' });
@@ -133,21 +149,13 @@ app.post('/api/bot/fill', async (req, res) => {
 });
 
 // Get active bots
-app.get('/api/bot/list', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
-  }
-
+adminApp.get('/api/bot/list', (req, res) => {
   const bots = bot.getActiveBots();
   res.json({ success: true, bots });
 });
 
-// Reset lobby for testing (Dev Mode Only)
-app.post('/api/dev/reset', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'Reset disabled in production' });
-  }
-
+// Reset lobby for testing
+adminApp.post('/api/dev/reset', async (req, res) => {
   const { lobbyId } = req.body;
   const targetLobbyId = lobbyId || 1;
 
@@ -168,11 +176,7 @@ app.post('/api/dev/reset', async (req, res) => {
 });
 
 // Remove a bot
-app.post('/api/bot/remove', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'Bots disabled in production' });
-  }
-
+adminApp.post('/api/bot/remove', (req, res) => {
   const { userId } = req.body;
   if (!userId) {
     return res.status(400).json({ success: false, error: 'userId required' });
@@ -229,261 +233,277 @@ function decrementConnection(ip) {
 }
 
 // ============================================
-// WebSocket Handling
+// WebSocket Handling - Shared Setup
 // ============================================
 
-wss.on('connection', (ws, req) => {
-  const ip = req.socket.remoteAddress;
+/**
+ * Setup WebSocket connection handler for a server
+ * @param {WebSocket.Server} wsServer - The WebSocket server
+ * @param {boolean} isAdminPort - Whether this is the admin port (free joins)
+ */
+function setupWebSocketHandler(wsServer, isAdminPort) {
+  wsServer.on('connection', (ws, req) => {
+    const ip = req.socket.remoteAddress;
 
-  // Check connection limit
-  if (!checkConnectionLimit(ip)) {
-    ws.close(4429, 'Too many connections');
-    return;
-  }
-  incrementConnection(ip);
-
-  // Connection state
-  let userId = null;
-  let authenticated = false;
-  let currentLobbyId = null;
-  let currentMatchId = null;
-  let pingInterval = null;
-  let lastPingTime = null;
-
-  // Expose a method to set matchId from outside (used when match starts)
-  ws.setMatchId = (matchId) => {
-    currentMatchId = matchId;
-  };
-
-  console.log(`WebSocket connected from ${ip}`);
-
-  // Ping interval
-  pingInterval = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-      lastPingTime = Date.now();
-      // Client-initiated pings, server just responds
-    }
-  }, 5000);
-
-  ws.on('message', async (data) => {
-    const message = protocol.parseMessage(data.toString());
-    if (!message) return;
-
-    // Rate limiting
-    if (!checkRateLimit(ip, message.type)) {
-      ws.send(protocol.createError('RATE_LIMITED'));
+    // Check connection limit
+    if (!checkConnectionLimit(ip)) {
+      ws.close(4429, 'Too many connections');
       return;
     }
+    incrementConnection(ip);
 
-    try {
-      await handleMessage(ws, message);
-    } catch (error) {
-      console.error('Message handling error:', error);
-      ws.send(protocol.createError('INTERNAL_ERROR'));
+    // Connection state
+    let userId = null;
+    let authenticated = false;
+    let currentLobbyId = null;
+    let currentMatchId = null;
+    let pingInterval = null;
+    let lastPingTime = null;
+
+    // Mark connection as admin port (for payment bypass)
+    ws.isAdminPort = isAdminPort;
+
+    // Expose a method to set matchId from outside (used when match starts)
+    ws.setMatchId = (matchId) => {
+      currentMatchId = matchId;
+    };
+
+    const portLabel = isAdminPort ? 'ADMIN' : 'PUBLIC';
+    console.log(`WebSocket connected from ${ip} [${portLabel}]`);
+
+    // Ping interval
+    pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        lastPingTime = Date.now();
+        // Client-initiated pings, server just responds
+      }
+    }, 5000);
+
+    ws.on('message', async (data) => {
+      const message = protocol.parseMessage(data.toString());
+      if (!message) return;
+
+      // Rate limiting
+      if (!checkRateLimit(ip, message.type)) {
+        ws.send(protocol.createError('RATE_LIMITED'));
+        return;
+      }
+
+      try {
+        await handleMessage(ws, message);
+      } catch (error) {
+        console.error('Message handling error:', error);
+        ws.send(protocol.createError('INTERNAL_ERROR'));
+      }
+    });
+
+    ws.on('close', () => {
+      console.log(`WebSocket disconnected: ${userId || 'unauthenticated'} [${portLabel}]`);
+
+      clearInterval(pingInterval);
+      decrementConnection(ip);
+
+      // Handle disconnect from lobby/match
+      if (currentMatchId) {
+        match.handleDisconnect(currentMatchId, userId);
+      }
+      if (currentLobbyId) {
+        lobby.removeConnection(currentLobbyId, userId);
+      }
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+    });
+
+    // ============================================
+    // Message Handlers
+    // ============================================
+
+    async function handleMessage(ws, message) {
+      switch (message.type) {
+        case protocol.ClientMessages.HELLO:
+          await handleHello(message);
+          break;
+
+        case protocol.ClientMessages.JOIN_LOBBY:
+          await handleJoinLobby(message);
+          break;
+
+        case protocol.ClientMessages.REQUEST_REFUND:
+          await handleRequestRefund(message);
+          break;
+
+        case protocol.ClientMessages.PING:
+          handlePing(message);
+          break;
+
+        case protocol.ClientMessages.INPUT:
+          handleInput(message);
+          break;
+
+        default:
+          console.log('Unknown message type:', message.type);
+      }
     }
-  });
 
-  ws.on('close', () => {
-    console.log(`WebSocket disconnected: ${userId || 'unauthenticated'}`);
+    async function handleHello(message) {
+      const { sessionToken } = message;
 
-    clearInterval(pingInterval);
-    decrementConnection(ip);
+      const authResult = auth.validateAuth(sessionToken);
+      if (!authResult.valid) {
+        ws.send(protocol.createError('INVALID_SESSION'));
+        ws.close(4001, 'Invalid session');
+        return;
+      }
 
-    // Handle disconnect from lobby/match
-    if (currentMatchId) {
-      match.handleDisconnect(currentMatchId, userId);
-    }
-    if (currentLobbyId) {
-      lobby.removeConnection(currentLobbyId, userId);
-    }
-  });
+      userId = authResult.user.id;
+      authenticated = true;
 
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
+      // Send welcome
+      ws.send(protocol.createWelcome(userId, Date.now()));
 
-  // ============================================
-  // Message Handlers
-  // ============================================
+      // Send lobby list
+      const lobbies = lobby.getLobbyList();
+      ws.send(protocol.createLobbyList(lobbies));
 
-  async function handleMessage(ws, message) {
-    switch (message.type) {
-      case protocol.ClientMessages.HELLO:
-        await handleHello(message);
-        break;
+      // Check if player is already in a lobby/match
+      const playerLobby = lobby.getPlayerLobby(userId);
+      if (playerLobby) {
+        currentLobbyId = playerLobby.lobby.id;
+        lobby.registerConnection(currentLobbyId, userId, ws);
 
-      case protocol.ClientMessages.JOIN_LOBBY:
-        await handleJoinLobby(message);
-        break;
+        // Send lobby update
+        const lobbyData = playerLobby.lobby;
+        const timeRemaining = lobbyData.timeout_at
+          ? Math.max(0, new Date(lobbyData.timeout_at).getTime() - Date.now())
+          : null;
 
-      case protocol.ClientMessages.REQUEST_REFUND:
-        await handleRequestRefund(message);
-        break;
+        ws.send(protocol.createLobbyUpdate(
+          lobbyData.id,
+          lobbyData.players.filter(p => !p.refunded_at),
+          lobbyData.status,
+          timeRemaining,
+          lobbyData.deposit_address
+        ));
 
-      case protocol.ClientMessages.PING:
-        handlePing(message);
-        break;
+        // Check if in active match
+        if (lobbyData.current_match_id) {
+          currentMatchId = lobbyData.current_match_id;
+          const activeMatch = match.getMatch(currentMatchId);
+          if (activeMatch) {
+            activeMatch.connections.set(userId, ws);
+            const player = activeMatch.players.find(p => p.id === userId);
+            if (player) {
+              player.connected = true;
+            }
+          }
+        }
+      }
 
-      case protocol.ClientMessages.INPUT:
-        handleInput(message);
-        break;
-
-      default:
-        console.log('Unknown message type:', message.type);
-    }
-  }
-
-  async function handleHello(message) {
-    const { sessionToken } = message;
-
-    const authResult = auth.validateAuth(sessionToken);
-    if (!authResult.valid) {
-      ws.send(protocol.createError('INVALID_SESSION'));
-      ws.close(4001, 'Invalid session');
-      return;
+      console.log(`User ${userId} authenticated [${portLabel}]`);
     }
 
-    userId = authResult.user.id;
-    authenticated = true;
+    async function handleJoinLobby(message) {
+      if (!authenticated) {
+        ws.send(protocol.createError('INVALID_SESSION'));
+        return;
+      }
 
-    // Send welcome
-    ws.send(protocol.createWelcome(userId, Date.now()));
+      const { lobbyId, paymentTxHash } = message;
+      const user = db.getUserById(userId);
 
-    // Send lobby list
-    const lobbies = lobby.getLobbyList();
-    ws.send(protocol.createLobbyList(lobbies));
+      // Pass isAdminPort to joinLobby for payment bypass decision
+      const result = await lobby.joinLobby(userId, lobbyId, paymentTxHash, user.wallet_address, isAdminPort);
 
-    // Check if player is already in a lobby/match
-    const playerLobby = lobby.getPlayerLobby(userId);
-    if (playerLobby) {
-      currentLobbyId = playerLobby.lobby.id;
-      lobby.registerConnection(currentLobbyId, userId, ws);
+      if (!result.success) {
+        ws.send(protocol.createError(result.error));
+        return;
+      }
 
-      // Send lobby update
-      const lobbyData = playerLobby.lobby;
+      currentLobbyId = lobbyId;
+      lobby.registerConnection(lobbyId, userId, ws);
+
+      // Send lobby update to all players in lobby
+      const lobbyData = result.lobby;
+      const players = lobbyData.players.filter(p => !p.refunded_at);
       const timeRemaining = lobbyData.timeout_at
         ? Math.max(0, new Date(lobbyData.timeout_at).getTime() - Date.now())
         : null;
 
-      ws.send(protocol.createLobbyUpdate(
-        lobbyData.id,
-        lobbyData.players.filter(p => !p.refunded_at),
+      const updateMsg = protocol.createLobbyUpdate(
+        lobbyId,
+        players,
         lobbyData.status,
         timeRemaining,
         lobbyData.deposit_address
-      ));
+      );
 
-      // Check if in active match
-      if (lobbyData.current_match_id) {
-        currentMatchId = lobbyData.current_match_id;
-        const activeMatch = match.getMatch(currentMatchId);
-        if (activeMatch) {
-          activeMatch.connections.set(userId, ws);
-          const player = activeMatch.players.find(p => p.id === userId);
-          if (player) {
-            player.connected = true;
+      lobby.broadcastToLobby(lobbyId, updateMsg);
+
+      // Broadcast updated lobby list to all connected clients
+      broadcastLobbyList();
+
+      // Check if lobby is ready to start match
+      if (lobbyData.status === 'ready' && players.length === 3) {
+        setTimeout(() => {
+          try {
+            const newMatch = match.startMatch(lobbyId);
+            currentMatchId = newMatch.id;
+          } catch (error) {
+            console.error('Failed to start match:', error);
           }
-        }
+        }, 100); // Small delay to ensure all clients received lobby update
       }
     }
 
-    console.log(`User ${userId} authenticated`);
-  }
+    async function handleRequestRefund(message) {
+      if (!authenticated || !currentLobbyId) {
+        ws.send(protocol.createError('NOT_IN_LOBBY'));
+        return;
+      }
 
-  async function handleJoinLobby(message) {
-    if (!authenticated) {
-      ws.send(protocol.createError('INVALID_SESSION'));
-      return;
+      const result = await lobby.processTimeoutRefund(currentLobbyId, userId);
+
+      if (!result.success) {
+        ws.send(protocol.createError(result.error));
+        return;
+      }
+
+      // Broadcast refund to all players
+      const refundMsg = protocol.createRefundProcessed(currentLobbyId, 'timeout', result.refunds);
+      lobby.broadcastToLobby(currentLobbyId, refundMsg);
+
+      currentLobbyId = null;
+
+      // Broadcast updated lobby list
+      broadcastLobbyList();
     }
 
-    const { lobbyId, paymentTxHash } = message;
-    const user = db.getUserById(userId);
+    function handlePing(message) {
+      const { clientTime } = message;
+      const serverTime = Date.now();
+      const ping = lastPingTime ? serverTime - lastPingTime : 0;
 
-    const result = await lobby.joinLobby(userId, lobbyId, paymentTxHash, user.wallet_address);
-
-    if (!result.success) {
-      ws.send(protocol.createError(result.error));
-      return;
+      ws.send(protocol.createPong(serverTime, ping));
     }
 
-    currentLobbyId = lobbyId;
-    lobby.registerConnection(lobbyId, userId, ws);
+    function handleInput(message) {
+      if (!authenticated || !currentMatchId) return;
 
-    // Send lobby update to all players in lobby
-    const lobbyData = result.lobby;
-    const players = lobbyData.players.filter(p => !p.refunded_at);
-    const timeRemaining = lobbyData.timeout_at
-      ? Math.max(0, new Date(lobbyData.timeout_at).getTime() - Date.now())
-      : null;
-
-    const updateMsg = protocol.createLobbyUpdate(
-      lobbyId,
-      players,
-      lobbyData.status,
-      timeRemaining,
-      lobbyData.deposit_address
-    );
-
-    lobby.broadcastToLobby(lobbyId, updateMsg);
-
-    // Broadcast updated lobby list to all connected clients
-    broadcastLobbyList();
-
-    // Check if lobby is ready to start match
-    if (lobbyData.status === 'ready' && players.length === 3) {
-      setTimeout(() => {
-        try {
-          const newMatch = match.startMatch(lobbyId);
-          currentMatchId = newMatch.id;
-        } catch (error) {
-          console.error('Failed to start match:', error);
-        }
-      }, 100); // Small delay to ensure all clients received lobby update
+      match.processInput(currentMatchId, userId, {
+        targetX: message.targetX,
+        targetY: message.targetY,
+        sequence: message.sequence,
+        frozen: message.frozen,
+      });
     }
-  }
+  });
+}
 
-  async function handleRequestRefund(message) {
-    if (!authenticated || !currentLobbyId) {
-      ws.send(protocol.createError('NOT_IN_LOBBY'));
-      return;
-    }
-
-    const result = await lobby.processTimeoutRefund(currentLobbyId, userId);
-
-    if (!result.success) {
-      ws.send(protocol.createError(result.error));
-      return;
-    }
-
-    // Broadcast refund to all players
-    const refundMsg = protocol.createRefundProcessed(currentLobbyId, 'timeout', result.refunds);
-    lobby.broadcastToLobby(currentLobbyId, refundMsg);
-
-    currentLobbyId = null;
-
-    // Broadcast updated lobby list
-    broadcastLobbyList();
-  }
-
-  function handlePing(message) {
-    const { clientTime } = message;
-    const serverTime = Date.now();
-    const ping = lastPingTime ? serverTime - lastPingTime : 0;
-
-    ws.send(protocol.createPong(serverTime, ping));
-  }
-
-  function handleInput(message) {
-    if (!authenticated || !currentMatchId) return;
-
-    match.processInput(currentMatchId, userId, {
-      targetX: message.targetX,
-      targetY: message.targetY,
-      sequence: message.sequence,
-      frozen: message.frozen,
-    });
-  }
-});
+// Setup WebSocket handlers for both servers
+setupWebSocketHandler(wss, false);      // Port 3000 - production (payments required)
+setupWebSocketHandler(adminWss, true);  // Port 3001 - admin (free joins)
 
 // ============================================
 // Utility Functions
@@ -493,7 +513,14 @@ function broadcastLobbyList() {
   const lobbies = lobby.getLobbyList();
   const message = protocol.createLobbyList(lobbies);
 
+  // Broadcast to both production and admin WebSocket servers
   wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+
+  adminWss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);
     }
@@ -516,24 +543,38 @@ async function initialize() {
   // Initialize payment provider
   payments.initProvider();
 
-  // Start server
-  server.listen(PORT, () => {
-    console.log(`RPS Arena server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  // Start production server (port 3000)
+  server.listen(PUBLIC_PORT, () => {
+    console.log(`Production server running on port ${PUBLIC_PORT} (payments required)`);
   });
+
+  // Start admin server (port 3001)
+  adminServer.listen(ADMIN_PORT, () => {
+    console.log(`Admin server running on port ${ADMIN_PORT} (free joins, bot management)`);
+  });
+
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {
   console.log('\nShutting down...');
 
-  // Close all WebSocket connections
+  // Close all WebSocket connections on both servers
   wss.clients.forEach((client) => {
     client.close(1001, 'Server shutting down');
   });
 
+  adminWss.clients.forEach((client) => {
+    client.close(1001, 'Server shutting down');
+  });
+
   server.close(() => {
-    console.log('Server closed');
+    console.log('Production server closed');
+  });
+
+  adminServer.close(() => {
+    console.log('Admin server closed');
     process.exit(0);
   });
 });

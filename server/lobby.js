@@ -144,9 +144,10 @@ function getPlayerLobby(userId) {
  * @param {number} lobbyId - Lobby ID (1-10)
  * @param {string} paymentTxHash - Transaction hash of USDC payment
  * @param {string} userWalletAddress - User's wallet address
+ * @param {boolean} skipPayment - Whether to skip payment verification (admin port)
  * @returns {Object} { success, error, lobby }
  */
-async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress) {
+async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skipPayment = false) {
   const lobby = activeLobbies.get(lobbyId);
 
   // Validation
@@ -169,8 +170,8 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress) {
     return { success: false, error: 'ALREADY_IN_LOBBY' };
   }
 
-  // Check for duplicate tx hash
-  if (db.txHashExists(paymentTxHash)) {
+  // Check for duplicate tx hash (skip check for admin port fake tx hashes)
+  if (!skipPayment && db.txHashExists(paymentTxHash)) {
     return { success: false, error: 'PAYMENT_NOT_CONFIRMED' }; // Duplicate
   }
 
@@ -179,10 +180,8 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress) {
     return { success: false, error: 'LOBBY_TIMEOUT' };
   }
 
-  // Verify payment on blockchain (skip in dev mode)
-  const devMode = process.env.NODE_ENV !== 'production' && process.env.DEV_MODE === 'true';
-
-  if (!devMode) {
+  // Verify payment on blockchain (skip on admin port)
+  if (!skipPayment) {
     const verification = await payments.verifyPayment(
       paymentTxHash,
       lobby.deposit_address,
@@ -195,7 +194,7 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress) {
       return { success: false, error: 'PAYMENT_NOT_CONFIRMED' };
     }
   } else {
-    console.log('DEV_MODE: Skipping payment verification');
+    console.log('ADMIN PORT: Skipping payment verification');
   }
 
   // Double-check lobby hasn't filled while we were verifying

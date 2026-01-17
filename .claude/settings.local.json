@@ -17,7 +17,8 @@
       "Bash(del \"c:\\\\Users\\\\evank\\\\OneDrive\\\\Documents\\\\RPS-ARENA\\\\server\\\\rps_arena.db\")",
       "Bash(ping:*)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(dir:*)"
     ]
   }
 }
