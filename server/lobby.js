@@ -7,6 +7,7 @@ const db = require('./database');
 const wallet = require('./wallet');
 const payments = require('./payments');
 const protocol = require('./protocol');
+const { sendAlert, AlertType } = require('./alerts');
 
 // Active lobby data (in-memory for real-time updates)
 const activeLobbies = new Map();
@@ -231,6 +232,16 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skip
 
   console.log(`Player ${userId} joined lobby ${lobbyId} (${newPlayerCount}/3)`);
 
+  // Send activity alert (only for paid joins on production port)
+  if (!skipPayment) {
+    sendAlert(AlertType.PLAYER_JOINED, {
+      lobbyId,
+      playerCount: newPlayerCount,
+      username: user.username,
+      walletAddress: user.wallet_address,
+    });
+  }
+
   return { success: true, lobby };
 }
 
@@ -291,10 +302,17 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
   const playersToRefund = lobby.players.filter(p => !p.refunded_at);
 
   for (const p of playersToRefund) {
-    const result = await payments.sendRefundFromLobby(
-      lobby.deposit_private_key_encrypted,
-      p.wallet_address
-    );
+    let result;
+    try {
+      result = await payments.sendRefundFromLobby(
+        lobby.deposit_private_key_encrypted,
+        p.wallet_address,
+        lobbyId
+      );
+    } catch (error) {
+      console.error(`Refund exception for player ${p.user_id}:`, error);
+      result = { success: false, error: error.message || 'Unknown refund error' };
+    }
 
     if (result.success) {
       db.markPlayerRefunded(p.id, 'timeout', result.txHash);
@@ -310,6 +328,13 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
       });
     } else {
       console.error(`Failed to refund player ${p.user_id}:`, result.error);
+
+      // Alert on refund failure
+      sendAlert(AlertType.REFUND_FAILED, {
+        lobbyId,
+        playerAddress: p.wallet_address,
+        error: result.error,
+      });
     }
   }
 
@@ -333,7 +358,13 @@ async function processTreasuryRefund(lobbyId, reason) {
   const playersToRefund = lobby.players.filter(p => !p.refunded_at);
 
   for (const p of playersToRefund) {
-    const result = await payments.sendRefundFromTreasury(p.wallet_address);
+    let result;
+    try {
+      result = await payments.sendRefundFromTreasury(p.wallet_address);
+    } catch (error) {
+      console.error(`Treasury refund exception for player ${p.user_id}:`, error);
+      result = { success: false, error: error.message || 'Unknown refund error' };
+    }
 
     if (result.success) {
       db.markPlayerRefunded(p.id, reason, result.txHash);
@@ -349,6 +380,13 @@ async function processTreasuryRefund(lobbyId, reason) {
       });
     } else {
       console.error(`Failed to refund player ${p.user_id}:`, result.error);
+
+      // Alert on refund failure
+      sendAlert(AlertType.REFUND_FAILED, {
+        lobbyId,
+        playerAddress: p.wallet_address,
+        error: result.error,
+      });
     }
   }
 
@@ -467,8 +505,51 @@ function checkTimeouts() {
   }
 }
 
+// Track which lobbies we've already alerted about
+const stuckLobbyAlerts = new Set();
+
+/**
+ * Check for lobbies stuck in waiting or in_progress for too long (2+ hours)
+ * Alerts admin for manual review
+ */
+function checkStuckLobbies() {
+  const now = Date.now();
+  const STUCK_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+  for (const [id, lobby] of activeLobbies) {
+    if (lobby.status === 'waiting' || lobby.status === 'in_progress') {
+      if (!lobby.first_join_at) continue;
+
+      const firstJoinTime = new Date(lobby.first_join_at).getTime();
+      const duration = now - firstJoinTime;
+
+      if (duration >= STUCK_THRESHOLD_MS && !stuckLobbyAlerts.has(id)) {
+        // Mark as alerted to avoid spam
+        stuckLobbyAlerts.add(id);
+
+        const hours = Math.floor(duration / (60 * 60 * 1000));
+        const minutes = Math.floor((duration % (60 * 60 * 1000)) / (60 * 1000));
+
+        sendAlert(AlertType.LOBBY_STUCK, {
+          lobbyId: id,
+          status: lobby.status,
+          playerCount: lobby.players.length,
+          duration: `${hours}h ${minutes}m`,
+          depositAddress: lobby.deposit_address,
+        });
+      }
+    } else {
+      // Clear alert tracking when lobby resets
+      stuckLobbyAlerts.delete(id);
+    }
+  }
+}
+
 // Run timeout checker every 10 seconds
 setInterval(checkTimeouts, 10000);
+
+// Run stuck lobby checker every 5 minutes
+setInterval(checkStuckLobbies, 5 * 60 * 1000);
 
 // ============================================
 // Exports

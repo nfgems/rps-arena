@@ -64,19 +64,32 @@ This approach is MORE secure than removal because:
 ## Phase 2: Error Handling & Reliability 🔴
 *Server must not crash or lose player funds under any circumstance*
 
-### 2.1 Blockchain Error Handling
-- [ ] **Add try-catch to `sendWinnerPayout()`** in `match.js:311`
-- [ ] **Add try-catch to `sendRefundFromLobby()`** in `lobby.js:295`
-- [ ] **Handle RPC connection failures** in `payments.js:initProvider()`
-- [ ] **Implement RPC provider fallback list** (Alchemy, Infura, public)
-- [ ] **Distinguish error types** - Transient vs permanent failures
-- [ ] **Add retry logic** for transient blockchain errors (3 attempts with backoff)
+### 2.1 Blockchain Error Handling ✅ COMPLETE (2026-01-17)
+- [x] **Add try-catch to `sendWinnerPayout()`** in `match.js:322-331` - ✅ Catches exceptions, converts to error result
+- [x] **Add try-catch to `sendRefundFromLobby()`** in `lobby.js:295-304` - ✅ Both timeout and treasury refunds wrapped
+- [x] **Handle RPC connection failures** in `payments.js:initProvider()` - ✅ Try-catch with fallback on init failure
+- [x] **Implement RPC provider fallback list** - ✅ 3 public Base RPCs: mainnet.base.org, base.publicnode.com, 1rpc.io/base
+- [x] **Distinguish error types** - ✅ `classifyError()` returns 'transient', 'permanent', or 'unknown'
+- [x] **Add retry logic** for transient blockchain errors - ✅ `withRetry()` with 3 attempts, exponential backoff (1s→2s→4s)
 
-### 2.2 Database Error Handling
-- [ ] **Wrap all database operations in try-catch** in `database.js`
-- [ ] **Add connection health check** on server startup
+**Implementation Details:**
+- `payments.js`: Added `classifyError()`, `withRetry()`, `switchToNextProvider()`, `testRpcConnection()`
+- Transient errors (timeouts, rate limits, 5xx) trigger retry with RPC provider switch
+- Permanent errors (insufficient funds, reverts) fail immediately without retry
+- Custom RPC via `BASE_RPC_URL` env var is used first, then fallbacks
+
+### 2.2 Database Error Handling ⏳ PARTIAL (2026-01-17)
+- [x] **Wrap all database operations in try-catch** in `database.js` - ✅ `withDbErrorHandling()` wrapper on all 26+ functions
+- [x] **Add connection health check** on server startup - ✅ `checkHealth()` with fail-fast on startup, `/api/health` enhanced
 - [ ] **Implement graceful degradation** - Queue operations if DB temporarily unavailable
 - [ ] **Add transaction rollback** for multi-step operations
+
+**Implementation Details:**
+- `database.js`: Added `DbErrorType` enum, `classifyDbError()`, `withDbErrorHandling()` wrapper
+- Error types: CONNECTION, CONSTRAINT, BUSY, CORRUPT, READONLY, UNKNOWN
+- Discord alerts for serious DB errors (not constraint violations)
+- Server exits on startup if database unhealthy
+- `closeDb()` called on graceful shutdown
 
 ### 2.3 Game Loop Protection
 - [ ] **Add error boundary to `processTick()`** - Catch errors, log, continue
@@ -93,7 +106,28 @@ This approach is MORE secure than removal because:
 - [ ] **Check treasury balance before awarding winner**
 - [ ] **If payout fails: void match and refund all players**
 - [ ] **Log all payout attempts** with full transaction details
-- [ ] **Create admin alert** for payout failures
+- [x] **Create admin alert** for payout failures - ✅ Discord webhook alerts
+
+### 2.6 Admin Monitoring & Alerts ✅ COMPLETE (2026-01-17)
+- [x] **Discord webhook integration** - `server/alerts.js` module with dual channel support
+- [x] **Server start/shutdown alerts** - Notifies on restart (potential crash detection)
+- [x] **Payout failure alerts** - Immediate notification with lobby ID, match ID, winner address
+- [x] **Refund failure alerts** - Immediate notification with player wallet address
+- [x] **Stuck lobby detection** - Alerts if lobby active 2+ hours without completing
+- [x] **Match started alerts** - Activity notification when match begins
+- [x] **Match completed alerts** - Activity notification with winner and payout status
+- [x] **Player joined alerts** - Activity notification when player pays and joins lobby
+- [x] **Low ETH balance alerts** - Warns when lobby/treasury wallet low on gas
+- [x] **RPC error alerts** - Blockchain connection issues after all retries exhausted
+- [x] **Database error alerts** - Database operation failures (except expected constraint errors)
+
+**Setup:**
+- `DISCORD_WEBHOOK_URL` - Critical alerts channel
+- `DISCORD_ACTIVITY_WEBHOOK_URL` - Activity logs channel
+
+**Alert types:**
+- Critical (alerts channel): SERVER_START, SERVER_SHUTDOWN, PAYOUT_FAILED, REFUND_FAILED, LOBBY_STUCK, LOW_ETH_LOBBY, LOW_ETH_TREASURY, RPC_ERROR, DATABASE_ERROR, INSUFFICIENT_BALANCE
+- Activity (activity channel): MATCH_STARTED, MATCH_COMPLETED, PLAYER_JOINED
 
 ---
 
@@ -297,7 +331,7 @@ This approach is MORE secure than removal because:
 | Phase | Status | Completion |
 |-------|--------|------------|
 | Phase 1: Security | ✅ Complete | 100% (1.1 ✅, 1.2 ✅, 1.3 ✅, 1.4 ✅) |
-| Phase 2: Error Handling | ⬜ Not Started | 0% |
+| Phase 2: Error Handling | 🟡 In Progress | 50% (2.1 ✅, 2.2 ⏳, 2.6 ✅) |
 | Phase 3: Code Cleanup | ⬜ Not Started | 0% |
 | Phase 4: User Features | ⬜ Not Started | 0% |
 | Phase 5: Infrastructure | ⬜ Not Started | 0% |

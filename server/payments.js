@@ -5,6 +5,7 @@
 
 const { ethers } = require('ethers');
 const wallet = require('./wallet');
+const { sendAlert, AlertType } = require('./alerts');
 
 // USDC Contract ABI (minimal for transfers)
 const USDC_ABI = [
@@ -25,22 +26,246 @@ const MIN_CONFIRMATIONS = 3; // Minimum block confirmations required
 const MAX_TX_AGE_MS = 60 * 60 * 1000; // 1 hour in milliseconds
 const AMOUNT_TOLERANCE_PERCENT = 1; // 1% tolerance for gas variations (not applicable to USDC transfers)
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1000; // 1 second
+const MAX_RETRY_DELAY_MS = 10000; // 10 seconds
+
+// Low ETH balance threshold (for gas)
+const LOW_ETH_THRESHOLD = ethers.parseEther('0.001'); // 0.001 ETH (~$3-4 at typical prices, enough for ~20+ txs on Base)
+
+// RPC provider fallbacks (in order of preference)
+const DEFAULT_RPC_URLS = [
+  'https://mainnet.base.org',
+  'https://base.publicnode.com',
+  'https://1rpc.io/base',
+];
+
 let provider = null;
 let usdcContract = null;
+let currentRpcIndex = 0;
+
+// ============================================
+// Error Classification
+// ============================================
 
 /**
- * Initialize the blockchain provider
+ * Transient errors that may succeed on retry
+ */
+const TRANSIENT_ERROR_PATTERNS = [
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'network error',
+  'timeout',
+  'rate limit',
+  'too many requests',
+  '429',
+  '502',
+  '503',
+  '504',
+  'SERVER_ERROR',
+  'CONNECTION_ERROR',
+  'could not detect network',
+  'missing response',
+  'request failed',
+];
+
+/**
+ * Permanent errors that should not be retried
+ */
+const PERMANENT_ERROR_PATTERNS = [
+  'insufficient funds',
+  'nonce too low',
+  'replacement fee too low',
+  'gas required exceeds',
+  'execution reverted',
+  'invalid address',
+  'invalid argument',
+  'UNPREDICTABLE_GAS_LIMIT',
+  'CALL_EXCEPTION',
+];
+
+/**
+ * Classify an error as transient or permanent
+ * @param {Error|string} error - The error to classify
+ * @returns {'transient'|'permanent'|'unknown'} Error classification
+ */
+function classifyError(error) {
+  const errorMessage = (error?.message || error || '').toLowerCase();
+  const errorCode = error?.code || '';
+
+  // Check for permanent errors first (more specific)
+  for (const pattern of PERMANENT_ERROR_PATTERNS) {
+    if (errorMessage.includes(pattern.toLowerCase()) || errorCode.includes(pattern)) {
+      return 'permanent';
+    }
+  }
+
+  // Check for transient errors
+  for (const pattern of TRANSIENT_ERROR_PATTERNS) {
+    if (errorMessage.includes(pattern.toLowerCase()) || errorCode.includes(pattern)) {
+      return 'transient';
+    }
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Sleep for a specified duration
+ * @param {number} ms - Milliseconds to sleep
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute a function with retry logic for transient errors
+ * @param {Function} fn - Async function to execute
+ * @param {string} operationName - Name of the operation for logging
+ * @param {number} maxRetries - Maximum number of retries (default: MAX_RETRIES)
+ * @returns {Promise<any>} Result of the function
+ */
+async function withRetry(fn, operationName, maxRetries = MAX_RETRIES) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const errorType = classifyError(error);
+
+      console.error(`${operationName} attempt ${attempt}/${maxRetries} failed:`, error.message);
+
+      // Don't retry permanent errors
+      if (errorType === 'permanent') {
+        console.error(`${operationName}: Permanent error, not retrying`);
+        throw error;
+      }
+
+      // On transient errors, try switching RPC provider
+      if (errorType === 'transient' && attempt < maxRetries) {
+        const switched = switchToNextProvider();
+        if (switched) {
+          console.log(`${operationName}: Switched to fallback RPC provider`);
+        }
+      }
+
+      // Exponential backoff with jitter for retries
+      if (attempt < maxRetries) {
+        const delay = Math.min(
+          INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1) + Math.random() * 500,
+          MAX_RETRY_DELAY_MS
+        );
+        console.log(`${operationName}: Retrying in ${Math.round(delay)}ms...`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  // All retries exhausted - send alert
+  sendAlert(AlertType.RPC_ERROR, {
+    operation: operationName,
+    error: lastError?.message || 'Unknown error after all retries',
+  });
+
+  throw lastError;
+}
+
+// ============================================
+// Provider Management
+// ============================================
+
+/**
+ * Get the list of RPC URLs to try
+ * @returns {string[]} Array of RPC URLs
+ */
+function getRpcUrls() {
+  const customRpc = process.env.BASE_RPC_URL;
+  if (customRpc) {
+    // Put custom RPC first, then fallbacks
+    return [customRpc, ...DEFAULT_RPC_URLS.filter(url => url !== customRpc)];
+  }
+  return DEFAULT_RPC_URLS;
+}
+
+/**
+ * Initialize the blockchain provider with error handling
  */
 function initProvider() {
   if (provider) return provider;
 
-  const rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
-  provider = new ethers.JsonRpcProvider(rpcUrl);
+  const rpcUrls = getRpcUrls();
+  const rpcUrl = rpcUrls[currentRpcIndex];
+
+  try {
+    provider = new ethers.JsonRpcProvider(rpcUrl);
+    console.log(`Initialized RPC provider: ${rpcUrl}`);
+  } catch (error) {
+    console.error(`Failed to initialize RPC provider ${rpcUrl}:`, error.message);
+    // Try next provider
+    if (switchToNextProvider()) {
+      return initProvider();
+    }
+    throw new Error('All RPC providers failed to initialize');
+  }
 
   const usdcAddress = process.env.USDC_CONTRACT_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
   usdcContract = new ethers.Contract(usdcAddress, USDC_ABI, provider);
 
   return provider;
+}
+
+/**
+ * Switch to the next available RPC provider
+ * @returns {boolean} True if switched successfully, false if no more providers
+ */
+function switchToNextProvider() {
+  const rpcUrls = getRpcUrls();
+  const nextIndex = currentRpcIndex + 1;
+
+  if (nextIndex >= rpcUrls.length) {
+    // Wrap around to first provider
+    currentRpcIndex = 0;
+    console.warn('All RPC providers attempted, cycling back to primary');
+    return false;
+  }
+
+  currentRpcIndex = nextIndex;
+  const newRpcUrl = rpcUrls[currentRpcIndex];
+
+  console.log(`Switching to RPC provider ${currentRpcIndex + 1}/${rpcUrls.length}: ${newRpcUrl}`);
+
+  try {
+    provider = new ethers.JsonRpcProvider(newRpcUrl);
+    const usdcAddress = process.env.USDC_CONTRACT_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+    usdcContract = new ethers.Contract(usdcAddress, USDC_ABI, provider);
+    return true;
+  } catch (error) {
+    console.error(`Failed to switch to RPC provider ${newRpcUrl}:`, error.message);
+    // Recursively try next provider
+    return switchToNextProvider();
+  }
+}
+
+/**
+ * Test the current RPC connection
+ * @returns {Promise<{healthy: boolean, latency: number, error?: string}>}
+ */
+async function testRpcConnection() {
+  const start = Date.now();
+  try {
+    const p = getProvider();
+    const blockNumber = await p.getBlockNumber();
+    const latency = Date.now() - start;
+    return { healthy: true, latency, blockNumber };
+  } catch (error) {
+    return { healthy: false, latency: Date.now() - start, error: error.message };
+  }
 }
 
 /**
@@ -193,35 +418,50 @@ async function verifyPayment(txHash, expectedRecipient, expectedSender, expected
 // ============================================
 
 /**
- * Send USDC from a wallet
+ * Send USDC from a wallet (internal, no retry)
  * @param {ethers.Wallet} senderWallet - Wallet to send from (with provider)
  * @param {string} recipientAddress - Recipient address
  * @param {number} amount - Amount in USDC units (with decimals)
- * @returns {Object} { success, txHash, error }
+ * @returns {Object} { success, txHash, error, errorType }
+ */
+async function sendUsdcInternal(senderWallet, recipientAddress, amount) {
+  const usdcAddress = process.env.USDC_CONTRACT_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+  const usdc = new ethers.Contract(usdcAddress, USDC_ABI, senderWallet);
+
+  // Check balance first (this is a read operation, can fail transiently)
+  const balance = await usdc.balanceOf(senderWallet.address);
+  if (BigInt(balance) < BigInt(amount)) {
+    return { success: false, error: 'Insufficient USDC balance', errorType: 'permanent' };
+  }
+
+  // Send transaction
+  const tx = await usdc.transfer(recipientAddress, amount);
+  const receipt = await tx.wait();
+
+  if (receipt.status !== 1) {
+    return { success: false, error: 'Transaction failed on-chain', errorType: 'permanent' };
+  }
+
+  return { success: true, txHash: receipt.hash };
+}
+
+/**
+ * Send USDC from a wallet with retry logic for transient errors
+ * @param {ethers.Wallet} senderWallet - Wallet to send from (with provider)
+ * @param {string} recipientAddress - Recipient address
+ * @param {number} amount - Amount in USDC units (with decimals)
+ * @returns {Object} { success, txHash, error, errorType }
  */
 async function sendUsdc(senderWallet, recipientAddress, amount) {
   try {
-    const usdcAddress = process.env.USDC_CONTRACT_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-    const usdc = new ethers.Contract(usdcAddress, USDC_ABI, senderWallet);
-
-    // Check balance
-    const balance = await usdc.balanceOf(senderWallet.address);
-    if (BigInt(balance) < BigInt(amount)) {
-      return { success: false, error: 'Insufficient USDC balance' };
-    }
-
-    // Send transaction
-    const tx = await usdc.transfer(recipientAddress, amount);
-    const receipt = await tx.wait();
-
-    if (receipt.status !== 1) {
-      return { success: false, error: 'Transaction failed' };
-    }
-
-    return { success: true, txHash: receipt.hash };
+    return await withRetry(
+      () => sendUsdcInternal(senderWallet, recipientAddress, amount),
+      `sendUsdc(${recipientAddress.slice(0, 8)}...)`
+    );
   } catch (error) {
-    console.error('Send USDC error:', error);
-    return { success: false, error: error.message };
+    const errorType = classifyError(error);
+    console.error('Send USDC error (after retries):', error.message, `[${errorType}]`);
+    return { success: false, error: error.message, errorType };
   }
 }
 
@@ -261,7 +501,7 @@ function getTreasuryAddress() {
  * @param {string} winnerAddress - Winner's wallet address
  * @returns {Object} { success, txHash, error }
  */
-async function sendWinnerPayout(encryptedPrivateKey, winnerAddress) {
+async function sendWinnerPayout(encryptedPrivateKey, winnerAddress, lobbyId = null) {
   const encryptionKey = process.env.WALLET_ENCRYPTION_KEY;
   if (!encryptionKey) {
     return { success: false, error: 'Wallet encryption key not configured' };
@@ -269,6 +509,9 @@ async function sendWinnerPayout(encryptedPrivateKey, winnerAddress) {
 
   const provider = getProvider();
   const lobbyWallet = wallet.getWalletFromEncrypted(encryptedPrivateKey, encryptionKey, provider);
+
+  // Check for low ETH (non-blocking, just alerts)
+  checkLowEth(lobbyWallet.address, 'lobby', lobbyId);
 
   return sendUsdc(lobbyWallet, winnerAddress, WINNER_PAYOUT);
 }
@@ -279,7 +522,7 @@ async function sendWinnerPayout(encryptedPrivateKey, winnerAddress) {
  * @param {string} recipientAddress - Player's wallet address
  * @returns {Object} { success, txHash, error }
  */
-async function sendRefundFromLobby(encryptedPrivateKey, recipientAddress) {
+async function sendRefundFromLobby(encryptedPrivateKey, recipientAddress, lobbyId = null) {
   const encryptionKey = process.env.WALLET_ENCRYPTION_KEY;
   if (!encryptionKey) {
     return { success: false, error: 'Wallet encryption key not configured' };
@@ -287,6 +530,9 @@ async function sendRefundFromLobby(encryptedPrivateKey, recipientAddress) {
 
   const provider = getProvider();
   const lobbyWallet = wallet.getWalletFromEncrypted(encryptedPrivateKey, encryptionKey, provider);
+
+  // Check for low ETH (non-blocking, just alerts)
+  checkLowEth(lobbyWallet.address, 'lobby', lobbyId);
 
   return sendUsdc(lobbyWallet, recipientAddress, BUY_IN_AMOUNT);
 }
@@ -301,6 +547,9 @@ async function sendRefundFromTreasury(recipientAddress) {
   if (!treasuryWallet) {
     return { success: false, error: 'Treasury mnemonic not configured' };
   }
+
+  // Check for low ETH (non-blocking, just alerts)
+  checkLowEth(treasuryWallet.address, 'treasury');
 
   return sendUsdc(treasuryWallet, recipientAddress, BUY_IN_AMOUNT);
 }
@@ -340,6 +589,73 @@ async function getTreasuryBalance() {
   return getUsdcBalance(treasuryAddress);
 }
 
+/**
+ * Get ETH balance of an address (for gas)
+ * @param {string} address - Wallet address
+ * @returns {Object} { balance, formatted }
+ */
+async function getEthBalance(address) {
+  try {
+    const provider = getProvider();
+    const balance = await provider.getBalance(address);
+    return {
+      balance: balance.toString(),
+      formatted: ethers.formatEther(balance),
+    };
+  } catch (error) {
+    console.error('ETH balance check error:', error);
+    return { balance: '0', formatted: '0.00' };
+  }
+}
+
+// Track which wallets we've already alerted about (to avoid spam)
+const lowEthAlerts = new Set();
+
+/**
+ * Check if wallet has low ETH and send alert if needed
+ * @param {string} walletAddress - Wallet address
+ * @param {string} walletType - 'lobby' or 'treasury'
+ * @param {number|null} lobbyId - Lobby ID (for lobby wallets)
+ */
+async function checkLowEth(walletAddress, walletType, lobbyId = null) {
+  try {
+    const provider = getProvider();
+    const balance = await provider.getBalance(walletAddress);
+
+    if (balance < LOW_ETH_THRESHOLD) {
+      const alertKey = `${walletType}-${walletAddress}`;
+
+      // Only alert once per wallet until it's refilled
+      if (!lowEthAlerts.has(alertKey)) {
+        lowEthAlerts.add(alertKey);
+
+        const formattedBalance = ethers.formatEther(balance);
+
+        if (walletType === 'lobby') {
+          sendAlert(AlertType.LOW_ETH_LOBBY, {
+            lobbyId,
+            balance: `${formattedBalance} ETH`,
+            walletAddress,
+          });
+        } else {
+          sendAlert(AlertType.LOW_ETH_TREASURY, {
+            balance: `${formattedBalance} ETH`,
+            walletAddress,
+          });
+        }
+
+        console.warn(`[Payments] Low ETH warning for ${walletType} wallet ${walletAddress}: ${formattedBalance} ETH`);
+      }
+    } else {
+      // Clear alert flag if balance is now sufficient
+      const alertKey = `${walletType}-${walletAddress}`;
+      lowEthAlerts.delete(alertKey);
+    }
+  } catch (error) {
+    console.error('Low ETH check error:', error);
+  }
+}
+
 // ============================================
 // Exports
 // ============================================
@@ -375,4 +691,9 @@ module.exports = {
   // Balance
   getUsdcBalance,
   getTreasuryBalance,
+
+  // Error handling utilities
+  classifyError,
+  testRpcConnection,
+  withRetry,
 };

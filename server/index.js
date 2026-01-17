@@ -20,6 +20,7 @@ const lobby = require('./lobby');
 const match = require('./match');
 const payments = require('./payments');
 const bot = require('./bot');
+const { sendAlert, AlertType } = require('./alerts');
 
 // ============================================
 // Server Setup - Dual Port Architecture
@@ -50,9 +51,16 @@ adminApp.use(express.json());
 // ============================================
 
 function setupSharedRoutes(expressApp) {
-  // Health check
+  // Health check (includes database status)
   expressApp.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: Date.now() });
+    const dbHealth = db.checkHealth();
+    const status = dbHealth.healthy ? 'ok' : 'degraded';
+
+    res.json({
+      status,
+      timestamp: Date.now(),
+      database: dbHealth,
+    });
   });
 
   // Authentication endpoint
@@ -545,8 +553,21 @@ function broadcastLobbyList() {
 async function initialize() {
   console.log('Initializing RPS Arena server...');
 
-  // Initialize database
-  db.initializeDatabase();
+  // Check database health before proceeding
+  const dbHealth = db.checkHealth();
+  if (!dbHealth.healthy) {
+    console.error(`[FATAL] Database health check failed: ${dbHealth.error}`);
+    console.error(`Database path: ${dbHealth.path}`);
+    process.exit(1);
+  }
+  console.log(`Database health check passed: ${dbHealth.path} (journal: ${dbHealth.journalMode})`);
+
+  // Initialize database schema
+  const schemaInit = db.initializeDatabase();
+  if (!schemaInit) {
+    console.error('[FATAL] Failed to initialize database schema');
+    process.exit(1);
+  }
 
   // Initialize lobbies
   await lobby.initializeLobbies();
@@ -565,11 +586,15 @@ async function initialize() {
   });
 
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // Send startup alert (helps detect crashes/restarts)
+  sendAlert(AlertType.SERVER_START, { port: PUBLIC_PORT });
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\nShutting down...');
+  await sendAlert(AlertType.SERVER_SHUTDOWN, { reason: 'SIGINT (manual stop)' });
 
   // Close all WebSocket connections on both servers
   wss.clients.forEach((client) => {
@@ -586,6 +611,10 @@ process.on('SIGINT', () => {
 
   adminServer.close(() => {
     console.log('Admin server closed');
+
+    // Close database connection gracefully
+    db.closeDb();
+
     process.exit(0);
   });
 });

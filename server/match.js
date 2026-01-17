@@ -9,6 +9,7 @@ const protocol = require('./protocol');
 const logger = require('./logger');
 const payments = require('./payments');
 const lobby = require('./lobby');
+const { sendAlert, AlertType } = require('./alerts');
 
 // Active matches (in-memory for real-time game state)
 const activeMatches = new Map();
@@ -99,6 +100,13 @@ async function startMatch(lobbyId) {
   startCountdown(match);
 
   console.log(`Match ${matchData.id} started for lobby ${lobbyId}`);
+
+  // Send activity alert
+  sendAlert(AlertType.MATCH_STARTED, {
+    lobbyId,
+    matchId: matchData.id,
+    players: matchPlayers.map(p => p.username).join(', '),
+  });
 
   return match;
 }
@@ -317,17 +325,42 @@ async function endMatch(match, winner, reason) {
     // Process winner payout from lobby wallet
     const winnerPlayer = match.players.find(p => p.id === winner.id);
     const lobbyData = lobby.getLobby(match.lobbyId);
-    const payoutResult = await payments.sendWinnerPayout(
-      lobbyData.deposit_private_key_encrypted,
-      winnerPlayer.walletAddress
-    );
+
+    let payoutResult;
+    try {
+      payoutResult = await payments.sendWinnerPayout(
+        lobbyData.deposit_private_key_encrypted,
+        winnerPlayer.walletAddress,
+        match.lobbyId
+      );
+    } catch (error) {
+      console.error('Payout exception:', error);
+      payoutResult = { success: false, error: error.message || 'Unknown payout error' };
+    }
 
     if (payoutResult.success) {
       db.setMatchWinner(match.id, winner.id, 2.4, payoutResult.txHash);
     } else {
       console.error('Payout failed:', payoutResult.error);
       db.setMatchWinner(match.id, winner.id, 2.4, null);
+
+      // Alert on payout failure - requires manual intervention
+      sendAlert(AlertType.PAYOUT_FAILED, {
+        lobbyId: match.lobbyId,
+        matchId: match.id,
+        winnerAddress: winnerPlayer.walletAddress,
+        error: payoutResult.error,
+      });
     }
+
+    // Send activity alert for match completion
+    sendAlert(AlertType.MATCH_COMPLETED, {
+      lobbyId: match.lobbyId,
+      matchId: match.id,
+      winner: winnerPlayer.username,
+      payoutSuccess: payoutResult.success,
+      txHash: payoutResult.txHash || null,
+    });
 
     // Send match end message
     const endMsg = protocol.createMatchEnd(winner.id, {
