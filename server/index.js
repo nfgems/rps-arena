@@ -362,12 +362,16 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
       clearInterval(pingInterval);
       decrementConnection(ip);
 
-      // Handle disconnect from lobby/match
-      if (currentMatchId) {
-        match.handleDisconnect(currentMatchId, userId);
-      }
-      if (currentLobbyId) {
-        lobby.removeConnection(currentLobbyId, userId);
+      // Handle disconnect from lobby/match - wrapped in try-catch to prevent server crash
+      try {
+        if (currentMatchId) {
+          match.handleDisconnect(currentMatchId, userId);
+        }
+        if (currentLobbyId) {
+          lobby.removeConnection(currentLobbyId, userId);
+        }
+      } catch (error) {
+        console.error(`Error handling disconnect for user ${userId}:`, error);
       }
     });
 

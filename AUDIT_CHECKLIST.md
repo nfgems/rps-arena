@@ -50,16 +50,16 @@ These issues can cause crashes, data loss, or security vulnerabilities. **Do not
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 13 | C7 | Countdown timer not stored - leaks on match void | `server/match.js:317-345` | [ ] | [ ] | Store interval on match object |
-| 14 | C9 | Client event listener leaks on join buttons | `client/src/ui.js:381-436` | [ ] | [ ] | Use event delegation or remove old listeners |
+| 13 | C7 | Countdown timer not stored - leaks on match void | `server/match.js:317-345` | [x] | [ ] | Stored on match object, cleared in voidMatch() |
+| 14 | C9 | Client event listener leaks on join buttons | `client/src/ui.js:381-436` | [x] | [ ] | Implemented event delegation on lobby-list container |
 
 ### 1.3 Error Handling
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 15 | C11 | Disconnect handler has no try-catch | `server/index.js:321-334` | [ ] | [ ] | Wrap in try-catch |
+| 15 | C11 | Disconnect handler has no try-catch | `server/index.js:321-334` | [x] | [ ] | Wrapped match/lobby disconnect calls in try-catch |
 
-**Phase 1 Completion**: [ ] All 7 items done and tested
+**Phase 1 Completion**: [x] All 7 items done (testing pending)
 
 ---
 
@@ -271,11 +271,11 @@ After completing fixes, run these tests:
 | Phase | Total | Duplicates | Actionable | Done | Remaining |
 |-------|-------|------------|------------|------|-----------|
 | Phase 0 (Blockers) | 8 | 0 | 8 | 8 | 0 |
-| Phase 1 (Critical) | 7 | 0 | 7 | 4 | 3 |
+| Phase 1 (Critical) | 7 | 0 | 7 | 7 | 0 |
 | Phase 2 (High) | 17 | 1 (H16=C16) | 16 | 0 | 16 |
 | Phase 3 (Medium) | 15 | 2 (M5=C14, M13=C17) | 13 | 0 | 13 |
 | Phase 4 (Low) | 7 | 0 | 7 | 0 | 7 |
-| **TOTAL** | **54** | **3** | **51** | **12** | **39** |
+| **TOTAL** | **54** | **3** | **51** | **15** | **36** |
 
 *Duplicates are marked with strikethrough in the checklist above*
 

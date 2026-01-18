@@ -320,15 +320,16 @@ function startCountdown(match) {
   const snapshot = protocol.createSnapshot(0, match.players);
   broadcastToMatch(match, snapshot);
 
-  // Countdown timer
-  const countdownInterval = setInterval(() => {
+  // Countdown timer - stored on match object so it can be cleared if match is voided
+  match.countdownInterval = setInterval(() => {
     match.countdownRemaining--;
 
     if (match.countdownRemaining > 0) {
       const countdownMsg = protocol.createCountdown(match.countdownRemaining);
       broadcastToMatch(match, countdownMsg);
     } else {
-      clearInterval(countdownInterval);
+      clearInterval(match.countdownInterval);
+      match.countdownInterval = null;
 
       // Check for disconnected players at start of RUNNING
       for (const player of match.players) {
@@ -771,6 +772,11 @@ async function voidMatch(matchId, reason) {
   const match = activeMatches.get(matchId);
   if (!match) return;
 
+  // Clear both countdown and game loop intervals to prevent leaks
+  if (match.countdownInterval) {
+    clearInterval(match.countdownInterval);
+    match.countdownInterval = null;
+  }
   clearInterval(match.gameLoopInterval);
   match.status = 'void';
   db.updateMatchStatus(matchId, 'void');

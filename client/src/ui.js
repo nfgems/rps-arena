@@ -99,6 +99,9 @@ const UI = (function () {
     document.getElementById('cancel-join-btn').addEventListener('click', hidePaymentModal);
     document.getElementById('copy-address-btn').addEventListener('click', handleCopyAddress);
 
+    // Event delegation for lobby list buttons (prevents listener accumulation on re-render)
+    document.getElementById('lobby-list').addEventListener('click', handleLobbyListClick);
+
     // Network event listeners
     Network.addEventListener('LOBBY_LIST', handleLobbyList);
     Network.addEventListener('LOBBY_UPDATE', handleLobbyUpdate);
@@ -420,21 +423,34 @@ const UI = (function () {
         </div>
       `;
 
-      const joinBtn = item.querySelector('.join-btn');
-      if (devMode) {
-        joinBtn.addEventListener('click', () => handleDevJoin(lobby.id));
-      } else {
-        joinBtn.addEventListener('click', () => showPaymentModal(lobby.id, lobby.depositAddress));
-      }
-
-      if (devMode) {
-        const botsBtn = item.querySelector('.add-bots-btn');
-        if (botsBtn) {
-          botsBtn.addEventListener('click', () => handleAddBots(lobby.id));
-        }
-      }
-
+      // No individual event listeners needed - using event delegation on lobby-list container
       container.appendChild(item);
+    }
+  }
+
+  /**
+   * Handle clicks on lobby list buttons (event delegation)
+   */
+  function handleLobbyListClick(event) {
+    const target = event.target;
+
+    // Handle join button clicks
+    if (target.classList.contains('join-btn') && !target.disabled) {
+      const lobbyId = parseInt(target.dataset.lobbyId, 10);
+      const depositAddress = target.dataset.depositAddress;
+
+      if (devMode) {
+        handleDevJoin(lobbyId);
+      } else {
+        showPaymentModal(lobbyId, depositAddress);
+      }
+      return;
+    }
+
+    // Handle add bots button clicks (dev mode only)
+    if (target.classList.contains('add-bots-btn') && !target.disabled) {
+      const lobbyId = parseInt(target.dataset.lobbyId, 10);
+      handleAddBots(lobbyId);
     }
   }
 
