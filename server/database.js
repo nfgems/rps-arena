@@ -14,6 +14,222 @@ let dbHealthy = true;
 let lastHealthCheck = null;
 
 // ============================================
+// Graceful Degradation - Retry & Queue
+// ============================================
+
+// Retry configuration for BUSY errors
+const BUSY_RETRY_ATTEMPTS = 3;
+const BUSY_RETRY_DELAY_MS = 50; // Start with 50ms, doubles each retry
+
+// Queue for non-critical operations that failed and should be retried later
+const deferredOperations = [];
+const MAX_DEFERRED_QUEUE_SIZE = 100;
+const DEFERRED_PROCESS_INTERVAL_MS = 5000; // Process queue every 5 seconds
+let deferredProcessorRunning = false;
+
+/**
+ * Operations that are critical and cannot be deferred
+ * These will fail immediately if DB is unavailable
+ */
+const CRITICAL_OPERATIONS = new Set([
+  'createUser',
+  'createSession',
+  'addLobbyPlayer',
+  'createMatch',
+  'addMatchPlayer',
+  'setMatchWinner',
+  'markPlayerRefunded',
+]);
+
+/**
+ * Sleep for a specified duration (synchronous busy-wait for better-sqlite3)
+ * @param {number} ms - Milliseconds to sleep
+ */
+function sleepSync(ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // Busy wait - necessary for synchronous SQLite operations
+  }
+}
+
+/**
+ * Add an operation to the deferred queue
+ * @param {string} operationName - Name of the operation
+ * @param {Function} fn - Function to execute
+ * @param {any} defaultValue - Default value on failure
+ */
+function queueDeferredOperation(operationName, fn, defaultValue) {
+  if (deferredOperations.length >= MAX_DEFERRED_QUEUE_SIZE) {
+    console.warn(`[DB] Deferred queue full, dropping operation: ${operationName}`);
+    return;
+  }
+
+  deferredOperations.push({
+    operationName,
+    fn,
+    defaultValue,
+    queuedAt: Date.now(),
+    attempts: 0,
+  });
+
+  console.log(`[DB] Queued deferred operation: ${operationName} (queue size: ${deferredOperations.length})`);
+
+  // Start the processor if not running
+  if (!deferredProcessorRunning) {
+    startDeferredProcessor();
+  }
+}
+
+/**
+ * Process deferred operations queue
+ */
+function processDeferredQueue() {
+  if (deferredOperations.length === 0) {
+    return { processed: 0, failed: 0, remaining: 0 };
+  }
+
+  if (!dbHealthy) {
+    console.log(`[DB] Skipping deferred queue processing - database unhealthy`);
+    return { processed: 0, failed: 0, remaining: deferredOperations.length };
+  }
+
+  let processed = 0;
+  let failed = 0;
+  const maxToProcess = 10; // Process max 10 at a time to avoid blocking
+
+  for (let i = 0; i < maxToProcess && deferredOperations.length > 0; i++) {
+    const op = deferredOperations.shift();
+    op.attempts++;
+
+    try {
+      op.fn();
+      processed++;
+      console.log(`[DB] Processed deferred operation: ${op.operationName}`);
+    } catch (error) {
+      const errorType = classifyDbError(error);
+
+      if (errorType === DbErrorType.BUSY && op.attempts < 3) {
+        // Re-queue for another attempt
+        deferredOperations.push(op);
+      } else {
+        failed++;
+        console.error(`[DB] Deferred operation failed permanently: ${op.operationName} - ${error.message}`);
+      }
+    }
+  }
+
+  return { processed, failed, remaining: deferredOperations.length };
+}
+
+/**
+ * Start the deferred operations processor
+ */
+function startDeferredProcessor() {
+  if (deferredProcessorRunning) return;
+
+  deferredProcessorRunning = true;
+
+  const processInterval = setInterval(() => {
+    if (deferredOperations.length === 0) {
+      clearInterval(processInterval);
+      deferredProcessorRunning = false;
+      return;
+    }
+
+    const result = processDeferredQueue();
+    if (result.remaining === 0) {
+      clearInterval(processInterval);
+      deferredProcessorRunning = false;
+    }
+  }, DEFERRED_PROCESS_INTERVAL_MS);
+}
+
+/**
+ * Get deferred queue status
+ * @returns {{size: number, oldest: number|null}}
+ */
+function getDeferredQueueStatus() {
+  return {
+    size: deferredOperations.length,
+    oldest: deferredOperations.length > 0
+      ? Date.now() - deferredOperations[0].queuedAt
+      : null,
+  };
+}
+
+// ============================================
+// Transaction Support
+// ============================================
+
+/**
+ * Execute multiple operations atomically in a transaction
+ * If any operation fails, all changes are rolled back
+ *
+ * @param {string} operationName - Name for logging
+ * @param {Function} fn - Function that receives db and performs operations
+ * @returns {any} Result of fn() or null on error
+ *
+ * @example
+ * withTransaction('createMatchWithPlayers', (db) => {
+ *   const match = db.prepare('INSERT...').run(...);
+ *   db.prepare('INSERT...').run(...); // player 1
+ *   db.prepare('INSERT...').run(...); // player 2
+ *   return match;
+ * });
+ */
+function withTransaction(operationName, fn) {
+  const database = getDb();
+  if (!database) {
+    console.error(`[DB ERROR] ${operationName}: Database not available`);
+    return null;
+  }
+
+  // Create the transaction wrapper
+  const txn = database.transaction(() => {
+    return fn(database);
+  });
+
+  // Execute with error handling and retry logic
+  for (let attempt = 1; attempt <= BUSY_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const result = txn();
+      dbErrorAlerts.clear();
+      return result;
+    } catch (error) {
+      const errorType = classifyDbError(error);
+
+      // For BUSY errors, retry with exponential backoff
+      if (errorType === DbErrorType.BUSY && attempt < BUSY_RETRY_ATTEMPTS) {
+        const delay = BUSY_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(`[DB] ${operationName} transaction busy, retrying in ${delay}ms (attempt ${attempt}/${BUSY_RETRY_ATTEMPTS})`);
+        sleepSync(delay);
+        continue;
+      }
+
+      console.error(`[DB ERROR] ${operationName} transaction failed: ${error.message} [${errorType}]`);
+
+      // Mark database as unhealthy for connection/corruption errors
+      if (errorType === DbErrorType.CONNECTION || errorType === DbErrorType.CORRUPT) {
+        dbHealthy = false;
+      }
+
+      // Send alert for serious errors
+      if (errorType !== DbErrorType.CONSTRAINT && !dbErrorAlerts.has(errorType)) {
+        dbErrorAlerts.add(errorType);
+        sendAlert(AlertType.DATABASE_ERROR, {
+          operation: `${operationName} (transaction)`,
+          error: `${error.message} [${errorType}]`,
+        });
+      }
+
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// ============================================
 // Error Handling Utilities
 // ============================================
 
@@ -61,41 +277,60 @@ function classifyDbError(error) {
 const dbErrorAlerts = new Set();
 
 /**
- * Wrap a database operation with error handling
+ * Wrap a database operation with error handling, retry logic, and graceful degradation
  * @param {string} operationName - Name for logging
  * @param {Function} fn - Function to execute
  * @param {any} defaultValue - Default value to return on error (null for queries, false for writes)
  * @returns {any} Result of fn() or defaultValue on error
  */
 function withDbErrorHandling(operationName, fn, defaultValue = null) {
-  try {
-    // Clear error alert tracking on successful operation
-    dbErrorAlerts.clear();
-    return fn();
-  } catch (error) {
-    const errorType = classifyDbError(error);
-    console.error(`[DB ERROR] ${operationName}: ${error.message} [${errorType}]`);
+  const isCritical = CRITICAL_OPERATIONS.has(operationName);
 
-    // Mark database as unhealthy for connection/corruption errors
-    if (errorType === DbErrorType.CONNECTION || errorType === DbErrorType.CORRUPT) {
-      dbHealthy = false;
+  // Retry loop for BUSY errors
+  for (let attempt = 1; attempt <= BUSY_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const result = fn();
+      // Clear error alert tracking on successful operation
+      dbErrorAlerts.clear();
+      return result;
+    } catch (error) {
+      const errorType = classifyDbError(error);
+
+      // For BUSY errors, retry with exponential backoff
+      if (errorType === DbErrorType.BUSY && attempt < BUSY_RETRY_ATTEMPTS) {
+        const delay = BUSY_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(`[DB] ${operationName} busy, retrying in ${delay}ms (attempt ${attempt}/${BUSY_RETRY_ATTEMPTS})`);
+        sleepSync(delay);
+        continue;
+      }
+
+      console.error(`[DB ERROR] ${operationName}: ${error.message} [${errorType}]`);
+
+      // Mark database as unhealthy for connection/corruption errors
+      if (errorType === DbErrorType.CONNECTION || errorType === DbErrorType.CORRUPT) {
+        dbHealthy = false;
+      }
+
+      // Send alert for serious errors (not constraint violations which are expected)
+      if (errorType !== DbErrorType.CONSTRAINT && !dbErrorAlerts.has(errorType)) {
+        dbErrorAlerts.add(errorType);
+        sendAlert(AlertType.DATABASE_ERROR, {
+          operation: operationName,
+          error: `${error.message} [${errorType}]`,
+        });
+      }
+
+      // For non-critical operations with BUSY errors, queue for later
+      if (!isCritical && errorType === DbErrorType.BUSY) {
+        queueDeferredOperation(operationName, fn, defaultValue);
+        console.log(`[DB] Non-critical operation ${operationName} deferred due to BUSY error`);
+      }
+
+      return defaultValue;
     }
-
-    // Send alert for serious errors (not constraint violations which are expected)
-    if (errorType !== DbErrorType.CONSTRAINT && !dbErrorAlerts.has(errorType)) {
-      dbErrorAlerts.add(errorType);
-      sendAlert(AlertType.DATABASE_ERROR, {
-        operation: operationName,
-        error: `${error.message} [${errorType}]`,
-      });
-    }
-
-    // For busy errors, the operation might succeed on retry
-    // But since better-sqlite3 is synchronous, we don't retry here
-    // The caller can implement retry logic if needed
-
-    return defaultValue;
   }
+
+  return defaultValue;
 }
 
 /**
@@ -609,6 +844,348 @@ function getMatchEvents(matchId) {
 }
 
 // ============================================
+// Match State Persistence (Crash Recovery)
+// ============================================
+
+/**
+ * Save or update match state for crash recovery
+ * Uses upsert to handle both new and existing state
+ *
+ * @param {string} matchId - Match UUID
+ * @param {number} tick - Current tick number
+ * @param {string} status - 'countdown' or 'running'
+ * @param {Object} state - Player state object
+ * @param {number} version - State schema version (default 1)
+ * @returns {boolean} True if successful, false on error
+ */
+function saveMatchState(matchId, tick, status, state, version = 1) {
+  return withDbErrorHandling('saveMatchState', () => {
+    const database = getDb();
+    const now = new Date().toISOString();
+    const stateJson = JSON.stringify(state);
+
+    const stmt = database.prepare(`
+      INSERT INTO match_state (match_id, version, tick, status, state_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(match_id) DO UPDATE SET
+        tick = excluded.tick,
+        status = excluded.status,
+        state_json = excluded.state_json,
+        updated_at = excluded.updated_at
+    `);
+    stmt.run(matchId, version, tick, status, stateJson, now);
+    return true;
+  }, false);
+}
+
+/**
+ * Get saved match state for recovery
+ * @param {string} matchId - Match UUID
+ * @returns {Object|null} Saved state with parsed JSON, or null if not found
+ */
+function getMatchState(matchId) {
+  return withDbErrorHandling('getMatchState', () => {
+    const database = getDb();
+    const stmt = database.prepare('SELECT * FROM match_state WHERE match_id = ?');
+    const row = stmt.get(matchId);
+    if (row) {
+      row.state = JSON.parse(row.state_json);
+      delete row.state_json;
+    }
+    return row;
+  }, null);
+}
+
+/**
+ * Get all interrupted matches for crash recovery on startup
+ * Returns matches that were in 'countdown' or 'running' status
+ *
+ * @returns {Array} Array of match states with lobby info
+ */
+function getInterruptedMatches() {
+  return withDbErrorHandling('getInterruptedMatches', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      SELECT ms.*, m.lobby_id, m.rng_seed
+      FROM match_state ms
+      JOIN matches m ON ms.match_id = m.id
+      WHERE ms.status IN ('countdown', 'running')
+      ORDER BY ms.updated_at ASC
+    `);
+    return stmt.all().map(row => {
+      row.state = JSON.parse(row.state_json);
+      delete row.state_json;
+      return row;
+    });
+  }, []);
+}
+
+/**
+ * Delete match state (call when match ends normally or is voided)
+ * @param {string} matchId - Match UUID
+ * @returns {Object|null} Result of deletion or null on error
+ */
+function deleteMatchState(matchId) {
+  return withDbErrorHandling('deleteMatchState', () => {
+    const database = getDb();
+    const stmt = database.prepare('DELETE FROM match_state WHERE match_id = ?');
+    return stmt.run(matchId);
+  }, null);
+}
+
+// ============================================
+// Payout Attempt Operations
+// ============================================
+
+/**
+ * Log a payout attempt for audit trail
+ * @param {Object} params - Payout attempt details
+ * @param {string} params.matchId - Match ID
+ * @param {number} params.lobbyId - Lobby ID
+ * @param {string} params.recipientAddress - Wallet address receiving payout
+ * @param {number} params.amountUsdc - Amount in USDC (e.g., 2.4)
+ * @param {number} params.attemptNumber - Which attempt this is (1, 2, 3...)
+ * @param {'pending'|'success'|'failed'} params.status - Attempt status
+ * @param {string} params.sourceWallet - 'lobby' or 'treasury'
+ * @param {string} [params.txHash] - Transaction hash if successful
+ * @param {string} [params.errorMessage] - Error message if failed
+ * @param {string} [params.errorType] - Error classification (transient/permanent)
+ * @param {string} [params.treasuryBalanceBefore] - Treasury balance before attempt
+ * @returns {Object|null} Created payout attempt record
+ */
+function logPayoutAttempt({
+  matchId,
+  lobbyId,
+  recipientAddress,
+  amountUsdc,
+  attemptNumber,
+  status,
+  sourceWallet,
+  txHash = null,
+  errorMessage = null,
+  errorType = null,
+  treasuryBalanceBefore = null,
+}) {
+  return withDbErrorHandling('logPayoutAttempt', () => {
+    const database = getDb();
+    const id = uuid();
+
+    const stmt = database.prepare(`
+      INSERT INTO payout_attempts (
+        id, match_id, lobby_id, recipient_address, amount_usdc,
+        attempt_number, status, tx_hash, error_message, error_type,
+        source_wallet, treasury_balance_before
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      id, matchId, lobbyId, recipientAddress, amountUsdc,
+      attemptNumber, status, txHash, errorMessage, errorType,
+      sourceWallet, treasuryBalanceBefore
+    );
+
+    return {
+      id,
+      match_id: matchId,
+      lobby_id: lobbyId,
+      recipient_address: recipientAddress,
+      amount_usdc: amountUsdc,
+      attempt_number: attemptNumber,
+      status,
+      source_wallet: sourceWallet,
+      tx_hash: txHash,
+      error_message: errorMessage,
+    };
+  }, null);
+}
+
+/**
+ * Update a payout attempt status (e.g., pending -> success/failed)
+ * @param {string} attemptId - Payout attempt ID
+ * @param {'success'|'failed'} status - New status
+ * @param {string} [txHash] - Transaction hash if successful
+ * @param {string} [errorMessage] - Error message if failed
+ * @param {string} [errorType] - Error classification
+ */
+function updatePayoutAttempt(attemptId, status, txHash = null, errorMessage = null, errorType = null) {
+  return withDbErrorHandling('updatePayoutAttempt', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      UPDATE payout_attempts
+      SET status = ?, tx_hash = ?, error_message = ?, error_type = ?
+      WHERE id = ?
+    `);
+    return stmt.run(status, txHash, errorMessage, errorType, attemptId);
+  }, null);
+}
+
+/**
+ * Get all payout attempts for a match
+ * @param {string} matchId - Match ID
+ * @returns {Array} List of payout attempts
+ */
+function getPayoutAttempts(matchId) {
+  return withDbErrorHandling('getPayoutAttempts', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      SELECT * FROM payout_attempts
+      WHERE match_id = ?
+      ORDER BY created_at
+    `);
+    return stmt.all(matchId);
+  }, []);
+}
+
+/**
+ * Get failed payout attempts that may need manual intervention
+ * @returns {Array} List of failed payouts with match info
+ */
+function getFailedPayouts() {
+  return withDbErrorHandling('getFailedPayouts', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      SELECT pa.*, m.status as match_status, m.winner_id
+      FROM payout_attempts pa
+      JOIN matches m ON pa.match_id = m.id
+      WHERE pa.status = 'failed'
+      ORDER BY pa.created_at DESC
+    `);
+    return stmt.all();
+  }, []);
+}
+
+// ============================================
+// Transactional Operations (Multi-Step)
+// ============================================
+
+/**
+ * Create a match with all players atomically
+ * If any step fails, the entire operation is rolled back
+ *
+ * @param {number} lobbyId - Lobby ID
+ * @param {string} rngSeed - RNG seed for the match
+ * @param {Array<{userId: string, role: string, spawnX: number, spawnY: number}>} players - Player data
+ * @returns {{match: Object, players: Array}|null} Created match and players, or null on failure
+ */
+function createMatchWithPlayers(lobbyId, rngSeed, players) {
+  return withTransaction('createMatchWithPlayers', (database) => {
+    const matchId = uuid();
+    const now = new Date().toISOString();
+
+    // Step 1: Create the match
+    const matchStmt = database.prepare(`
+      INSERT INTO matches (id, lobby_id, status, rng_seed, countdown_at)
+      VALUES (?, ?, 'countdown', ?, ?)
+    `);
+    matchStmt.run(matchId, lobbyId, rngSeed, now);
+
+    // Step 2: Add all players
+    const playerStmt = database.prepare(`
+      INSERT INTO match_players (id, match_id, user_id, role, spawn_x, spawn_y)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const createdPlayers = [];
+    for (const p of players) {
+      const playerId = uuid();
+      playerStmt.run(playerId, matchId, p.userId, p.role, p.spawnX, p.spawnY);
+      createdPlayers.push({
+        id: playerId,
+        match_id: matchId,
+        user_id: p.userId,
+        role: p.role,
+        spawn_x: p.spawnX,
+        spawn_y: p.spawnY,
+      });
+    }
+
+    // Step 3: Update lobby status
+    const lobbyStmt = database.prepare(`
+      UPDATE lobbies SET status = 'in_progress', current_match_id = ?
+      WHERE id = ?
+    `);
+    lobbyStmt.run(matchId, lobbyId);
+
+    return {
+      match: { id: matchId, lobby_id: lobbyId, status: 'countdown', rng_seed: rngSeed },
+      players: createdPlayers,
+    };
+  });
+}
+
+/**
+ * Reset a lobby and clear all its players atomically
+ * Used when a lobby times out or needs to be force-reset
+ *
+ * @param {number} lobbyId - Lobby ID
+ * @returns {boolean} True if successful, false on failure
+ */
+function resetLobbyWithPlayers(lobbyId) {
+  return withTransaction('resetLobbyWithPlayers', (database) => {
+    // Step 1: Clear all lobby players (those not refunded)
+    const clearStmt = database.prepare('DELETE FROM lobby_players WHERE lobby_id = ?');
+    clearStmt.run(lobbyId);
+
+    // Step 2: Reset lobby state
+    const resetStmt = database.prepare(`
+      UPDATE lobbies
+      SET status = 'empty', first_join_at = NULL, timeout_at = NULL, current_match_id = NULL
+      WHERE id = ?
+    `);
+    resetStmt.run(lobbyId);
+
+    return true;
+  }) ?? false;
+}
+
+/**
+ * End a match and update all related records atomically
+ * Sets winner, payout info, and updates lobby status
+ *
+ * @param {string} matchId - Match ID
+ * @param {string|null} winnerId - Winner user ID (null for void matches)
+ * @param {number|null} payoutAmount - Payout amount (null for void matches)
+ * @param {string|null} payoutTxHash - Payout transaction hash
+ * @param {number} lobbyId - Lobby ID to reset
+ * @returns {boolean} True if successful, false on failure
+ */
+function endMatchWithLobbyReset(matchId, winnerId, payoutAmount, payoutTxHash, lobbyId) {
+  return withTransaction('endMatchWithLobbyReset', (database) => {
+    const now = new Date().toISOString();
+
+    // Step 1: Update match with winner info
+    if (winnerId) {
+      const matchStmt = database.prepare(`
+        UPDATE matches
+        SET status = 'finished', winner_id = ?, payout_amount = ?, payout_tx_hash = ?, ended_at = ?
+        WHERE id = ?
+      `);
+      matchStmt.run(winnerId, payoutAmount, payoutTxHash, now, matchId);
+    } else {
+      // Void match
+      const matchStmt = database.prepare(`
+        UPDATE matches SET status = 'void', ended_at = ? WHERE id = ?
+      `);
+      matchStmt.run(now, matchId);
+    }
+
+    // Step 2: Clear lobby players
+    const clearStmt = database.prepare('DELETE FROM lobby_players WHERE lobby_id = ?');
+    clearStmt.run(lobbyId);
+
+    // Step 3: Reset lobby for next match
+    const lobbyStmt = database.prepare(`
+      UPDATE lobbies
+      SET status = 'empty', first_join_at = NULL, timeout_at = NULL, current_match_id = NULL
+      WHERE id = ?
+    `);
+    lobbyStmt.run(lobbyId);
+
+    return true;
+  }) ?? false;
+}
+
+// ============================================
 // Exports
 // ============================================
 
@@ -623,6 +1200,10 @@ module.exports = {
 
   // Error types (for callers that need to handle specific errors)
   DbErrorType,
+
+  // Graceful degradation
+  getDeferredQueueStatus,
+  processDeferredQueue,
 
   // Users
   createUser,
@@ -667,4 +1248,22 @@ module.exports = {
   // Match Events
   logMatchEvent,
   getMatchEvents,
+
+  // Match State Persistence (Crash Recovery)
+  saveMatchState,
+  getMatchState,
+  getInterruptedMatches,
+  deleteMatchState,
+
+  // Payout Attempts
+  logPayoutAttempt,
+  updatePayoutAttempt,
+  getPayoutAttempts,
+  getFailedPayouts,
+
+  // Transactional Operations (atomic multi-step)
+  withTransaction,
+  createMatchWithPlayers,
+  resetLobbyWithPlayers,
+  endMatchWithLobbyReset,
 };

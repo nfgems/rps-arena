@@ -78,11 +78,11 @@ This approach is MORE secure than removal because:
 - Permanent errors (insufficient funds, reverts) fail immediately without retry
 - Custom RPC via `BASE_RPC_URL` env var is used first, then fallbacks
 
-### 2.2 Database Error Handling ⏳ PARTIAL (2026-01-17)
+### 2.2 Database Error Handling ✅ COMPLETE (2026-01-17)
 - [x] **Wrap all database operations in try-catch** in `database.js` - ✅ `withDbErrorHandling()` wrapper on all 26+ functions
 - [x] **Add connection health check** on server startup - ✅ `checkHealth()` with fail-fast on startup, `/api/health` enhanced
-- [ ] **Implement graceful degradation** - Queue operations if DB temporarily unavailable
-- [ ] **Add transaction rollback** for multi-step operations
+- [x] **Implement graceful degradation** - ✅ Retry logic for BUSY errors + deferred queue for non-critical operations
+- [x] **Add transaction rollback** for multi-step operations - ✅ `withTransaction()` + 3 atomic operations
 
 **Implementation Details:**
 - `database.js`: Added `DbErrorType` enum, `classifyDbError()`, `withDbErrorHandling()` wrapper
@@ -90,23 +90,56 @@ This approach is MORE secure than removal because:
 - Discord alerts for serious DB errors (not constraint violations)
 - Server exits on startup if database unhealthy
 - `closeDb()` called on graceful shutdown
+- Graceful degradation: BUSY errors retry 3x with 50ms→100ms→200ms backoff
+- Non-critical operations (reads, logs) queued for later if BUSY persists
+- Critical operations (createUser, addLobbyPlayer, etc.) fail immediately if unrecoverable
+- `/api/health` now includes `deferredQueue` status
+- Transaction support: `withTransaction()` wrapper with automatic rollback on failure
+- Atomic operations: `createMatchWithPlayers()`, `resetLobbyWithPlayers()`, `endMatchWithLobbyReset()`
 
-### 2.3 Game Loop Protection
-- [ ] **Add error boundary to `processTick()`** - Catch errors, log, continue
-- [ ] **Implement match recovery** if tick processing fails
-- [ ] **Add health monitoring** for game loop (detect if it stops)
+### 2.3 Game Loop Protection ✅ COMPLETE (2026-01-17)
+- [x] **Add error boundary to `processTick()`** - ✅ Try-catch in `startGameLoop()` with error classification
+- [x] **Implement match recovery** if tick processing fails - ✅ Transient errors allow retry, critical errors void match
+- [x] **Add health monitoring** for game loop (detect if it stops) - ✅ `startHealthMonitor()` detects stalled loops
 
-### 2.4 Match State Persistence
-- [ ] **Save match state to database every tick** (or every N ticks)
-- [ ] **Implement crash recovery on startup** - Resume interrupted matches
-- [ ] **Auto-refund players** for unrecoverable matches
-- [ ] **Add match state versioning** for safe updates
+**Implementation Details:**
+- `match.js`: Added error boundary in game loop interval
+- `classifyTickError()` distinguishes critical vs transient errors
+- Consecutive error tracking via `matchTickErrors` Map
+- `MAX_CONSECUTIVE_TICK_ERRORS = 3` before voiding match
+- `MAX_TICK_STALENESS = 2000ms` before health monitor voids match
+- Health monitor runs every 5s checking all active matches
+- `getHealthStatus()` returns match health for `/api/health`
+- Discord alerts on game loop failures
 
-### 2.5 Payout Failure Handling
-- [ ] **Check treasury balance before awarding winner**
-- [ ] **If payout fails: void match and refund all players**
-- [ ] **Log all payout attempts** with full transaction details
-- [x] **Create admin alert** for payout failures - ✅ Discord webhook alerts
+### 2.4 Match State Persistence ✅ COMPLETE (2026-01-17)
+- [x] **Save match state to database every tick** (or every N ticks) - ✅ Saves every 5 ticks (~167ms) via `persistMatchState()`
+- [x] **Implement crash recovery on startup** - Resume interrupted matches - ✅ `recoverInterruptedMatches()` voids and refunds on startup
+- [x] **Auto-refund players** for unrecoverable matches - ✅ Treasury refunds via `voidAndRefundFromRecovery()`
+- [x] **Add match state versioning** for safe updates - ✅ `CURRENT_STATE_VERSION = 1`, `COMPATIBLE_STATE_VERSIONS` array
+
+**Implementation Details:**
+- `database/schema.sql`: Added `match_state` table (match_id, version, tick, status, state_json, updated_at)
+- `database.js`: Added `saveMatchState()`, `getMatchState()`, `getInterruptedMatches()`, `deleteMatchState()`
+- `match.js`: Added `persistMatchState()`, `recoverInterruptedMatches()`, `voidAndRefundFromRecovery()`
+- State saved every 5 ticks (PERSISTENCE_INTERVAL) - balances SQLite performance with acceptable state loss (~167ms max)
+- State older than 5 minutes (MAX_STATE_AGE_MS) is considered unrecoverable
+- Recovery currently always voids and refunds (reconnection not implemented yet)
+- Discord MATCH_RECOVERED alerts sent for each recovered match
+- State cleaned up automatically when match ends (endMatch/voidMatch)
+
+### 2.5 Payout Failure Handling ✅ COMPLETE (2026-01-17)
+- [x] **Check treasury balance before awarding winner** - ✅ Checks treasury can cover refunds before payout attempt
+- [x] **If payout fails: void match and refund all players** - ✅ `endMatch()` now voids and calls `processTreasuryRefund()` on failure
+- [x] **Log all payout attempts** with full transaction details - ✅ New `payout_attempts` table with full audit trail
+- [x] **Create admin alert** for payout failures - ✅ Discord webhook alerts (already existed)
+
+**Implementation Details:**
+- `database/schema.sql`: Added `payout_attempts` table tracking match_id, recipient, amount, status, tx_hash, errors, source_wallet, treasury_balance
+- `database.js`: Added `logPayoutAttempt()`, `updatePayoutAttempt()`, `getPayoutAttempts()`, `getFailedPayouts()`
+- `match.js:endMatch()`: Now checks treasury balance before payout, logs attempt, voids match on failure, refunds all players
+- Logs warning if treasury balance insufficient for potential refunds (payout still attempted)
+- Sends `PAYOUT_FAILED` alert with action taken when payout fails
 
 ### 2.6 Admin Monitoring & Alerts ✅ COMPLETE (2026-01-17)
 - [x] **Discord webhook integration** - `server/alerts.js` module with dual channel support
@@ -331,7 +364,7 @@ This approach is MORE secure than removal because:
 | Phase | Status | Completion |
 |-------|--------|------------|
 | Phase 1: Security | ✅ Complete | 100% (1.1 ✅, 1.2 ✅, 1.3 ✅, 1.4 ✅) |
-| Phase 2: Error Handling | 🟡 In Progress | 50% (2.1 ✅, 2.2 ⏳, 2.6 ✅) |
+| Phase 2: Error Handling | ✅ Complete | 100% (2.1 ✅, 2.2 ✅, 2.3 ✅, 2.4 ✅, 2.5 ✅, 2.6 ✅) |
 | Phase 3: Code Cleanup | ⬜ Not Started | 0% |
 | Phase 4: User Features | ⬜ Not Started | 0% |
 | Phase 5: Infrastructure | ⬜ Not Started | 0% |

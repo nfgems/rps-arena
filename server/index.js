@@ -51,15 +51,22 @@ adminApp.use(express.json());
 // ============================================
 
 function setupSharedRoutes(expressApp) {
-  // Health check (includes database status)
+  // Health check (includes database status and game loop health)
   expressApp.get('/api/health', (req, res) => {
     const dbHealth = db.checkHealth();
-    const status = dbHealth.healthy ? 'ok' : 'degraded';
+    const deferredQueue = db.getDeferredQueueStatus();
+    const gameLoopHealth = match.getHealthStatus();
+
+    // Overall status is degraded if DB or any game loop is unhealthy
+    const gameLoopsHealthy = gameLoopHealth.matches.every(m => m.isHealthy);
+    const status = dbHealth.healthy && gameLoopsHealthy ? 'ok' : 'degraded';
 
     res.json({
       status,
       timestamp: Date.now(),
       database: dbHealth,
+      deferredQueue,
+      gameLoop: gameLoopHealth,
     });
   });
 
@@ -569,11 +576,24 @@ async function initialize() {
     process.exit(1);
   }
 
-  // Initialize lobbies
+  // Recover interrupted matches from previous server crash
+  console.log('Checking for interrupted matches...');
+  const recoveryResults = await match.recoverInterruptedMatches();
+  if (recoveryResults.length > 0) {
+    console.log(`[RECOVERY] Processed ${recoveryResults.length} interrupted match(es)`);
+    for (const r of recoveryResults) {
+      console.log(`  - Match ${r.matchId}: ${r.result} (${r.reason || 'ok'})`);
+    }
+  }
+
+  // Initialize lobbies (after recovery to ensure lobbies are reset)
   await lobby.initializeLobbies();
 
   // Initialize payment provider
   payments.initProvider();
+
+  // Start game loop health monitor
+  match.startHealthMonitor();
 
   // Start production server (port 3000)
   server.listen(PUBLIC_PORT, () => {
@@ -595,6 +615,9 @@ async function initialize() {
 process.on('SIGINT', async () => {
   console.log('\nShutting down...');
   await sendAlert(AlertType.SERVER_SHUTDOWN, { reason: 'SIGINT (manual stop)' });
+
+  // Stop health monitor
+  match.stopHealthMonitor();
 
   // Close all WebSocket connections on both servers
   wss.clients.forEach((client) => {

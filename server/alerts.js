@@ -21,6 +21,7 @@ const AlertType = {
   LOW_ETH_TREASURY: 'low_eth_treasury',
   RPC_ERROR: 'rpc_error',
   DATABASE_ERROR: 'database_error',
+  MATCH_RECOVERED: 'match_recovered',
 
   // Activity notifications (go to activity channel)
   MATCH_STARTED: 'match_started',
@@ -204,6 +205,21 @@ function buildEmbed(type, data) {
         fields: [
           { name: 'Operation', value: data.operation || 'unknown', inline: true },
           { name: 'Error', value: (data.error || 'Unknown error').slice(0, 1000), inline: false },
+        ],
+        timestamp,
+      };
+
+    case AlertType.MATCH_RECOVERED:
+      return {
+        title: '🔄 Match Recovered from Crash',
+        description: 'Server restarted and processed interrupted match. Players refunded.',
+        color: 0xffaa00, // Orange/warning
+        fields: [
+          { name: 'Match ID', value: String(data.matchId || 'unknown'), inline: true },
+          { name: 'Lobby ID', value: String(data.lobbyId || 'unknown'), inline: true },
+          { name: 'Result', value: data.result || 'unknown', inline: true },
+          { name: 'Reason', value: data.reason || 'N/A', inline: true },
+          { name: 'Players Affected', value: String(data.playerCount || 0), inline: true },
         ],
         timestamp,
       };
