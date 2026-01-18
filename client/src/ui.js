@@ -121,6 +121,23 @@ const UI = (function () {
     // Event delegation for lobby list buttons (prevents listener accumulation on re-render)
     document.getElementById('lobby-list').addEventListener('click', handleLobbyListClick);
 
+    // Tab navigation
+    document.getElementById('nav-lobbies').addEventListener('click', () => showTab('lobbies'));
+    document.getElementById('nav-leaderboard').addEventListener('click', () => showTab('leaderboard'));
+    document.getElementById('nav-profile').addEventListener('click', () => showTab('profile'));
+
+    // Profile actions
+    document.getElementById('edit-username-btn').addEventListener('click', showUsernameModal);
+    document.getElementById('save-username-btn').addEventListener('click', handleSaveUsername);
+    document.getElementById('cancel-username-btn').addEventListener('click', hideUsernameModal);
+    document.getElementById('change-photo-btn').addEventListener('click', () => document.getElementById('photo-input').click());
+    document.getElementById('photo-input').addEventListener('change', handlePhotoUpload);
+
+    // Leaderboard filters
+    document.getElementById('filter-all').addEventListener('click', () => loadLeaderboard('all'));
+    document.getElementById('filter-monthly').addEventListener('click', () => loadLeaderboard('monthly'));
+    document.getElementById('filter-weekly').addEventListener('click', () => loadLeaderboard('weekly'));
+
     // Network event listeners
     Network.addEventListener('LOBBY_LIST', handleLobbyList);
     Network.addEventListener('LOBBY_UPDATE', handleLobbyUpdate);
@@ -134,6 +151,14 @@ const UI = (function () {
     Network.addEventListener('REFUND_PROCESSED', handleRefundProcessed);
     Network.addEventListener('ERROR', handleError);
     Network.addEventListener('pingUpdate', handlePingUpdate);
+    Network.addEventListener('PLAYER_DISCONNECT', handlePlayerDisconnect);
+    Network.addEventListener('PLAYER_RECONNECT', handlePlayerReconnect);
+    Network.addEventListener('RECONNECT_STATE', handleReconnectState);
+
+    // Wallet change handlers - prevent account switching during active match
+    window.addEventListener('wallet:accountChanged', handleWalletAccountChanged);
+    window.addEventListener('wallet:disconnected', handleWalletDisconnected);
+    window.addEventListener('wallet:wrongNetwork', handleWalletWrongNetwork);
   }
 
   /**
@@ -393,6 +418,94 @@ const UI = (function () {
     document.getElementById('game-ping-value').textContent = ping;
   }
 
+  function handlePlayerDisconnect(data) {
+    // Another player disconnected - show visual indicator
+    const playerId = data.playerId;
+    const graceRemaining = data.graceRemaining;
+
+    console.log(`Player ${playerId} disconnected, ${graceRemaining}s grace period`);
+
+    // Update interpolation to mark player as disconnected (for visual indicator)
+    Interpolation.markPlayerDisconnected(playerId, graceRemaining);
+  }
+
+  function handlePlayerReconnect(data) {
+    // Another player reconnected
+    const playerId = data.playerId;
+
+    console.log(`Player ${playerId} reconnected`);
+
+    // Update interpolation to mark player as connected
+    Interpolation.markPlayerReconnected(playerId);
+  }
+
+  function handleReconnectState(data) {
+    // We reconnected to an in-progress match - restore game state
+    console.log('Reconnected to match:', data.matchId);
+
+    myRole = data.role;
+
+    // Update role display
+    document.getElementById('role-display').textContent = myRole.toUpperCase();
+    document.getElementById('role-display').style.color = roleColors[myRole] || '#ffffff';
+
+    // Initialize game systems if not already running
+    if (currentScreen !== 'game') {
+      showScreen('game');
+      Renderer.init(document.getElementById('game-canvas'));
+      Input.init(document.getElementById('game-canvas'));
+      Interpolation.init();
+      Input.startSending();
+      startGameLoop();
+    }
+
+    // Apply the reconnect snapshot
+    Interpolation.onSnapshot({
+      tick: data.tick,
+      players: data.players,
+    });
+
+    // Mark disconnected players
+    for (const player of data.players) {
+      if (!player.connected && player.alive) {
+        Interpolation.markPlayerDisconnected(player.id, 0);
+      }
+    }
+  }
+
+  function handleWalletAccountChanged(event) {
+    const newAddress = event.detail;
+    console.log('Wallet account changed to:', newAddress);
+
+    // If in a match, this is a forfeit - just disconnect
+    if (currentScreen === 'game') {
+      alert('Wallet account changed during match. You have been disconnected.');
+      Network.disconnect();
+      showScreen('landing');
+    } else {
+      // Not in match - re-authenticate with new wallet
+      Network.disconnect();
+      showScreen('landing');
+    }
+  }
+
+  function handleWalletDisconnected() {
+    console.log('Wallet disconnected');
+
+    // If in a match, this is a forfeit
+    if (currentScreen === 'game') {
+      alert('Wallet disconnected during match. You have been disconnected from the game.');
+    }
+
+    Network.disconnect();
+    showScreen('landing');
+  }
+
+  function handleWalletWrongNetwork() {
+    console.log('Wallet switched to wrong network');
+    alert('Please switch back to Base network to continue playing.');
+  }
+
   // ============================================
   // UI Rendering
   // ============================================
@@ -603,6 +716,416 @@ const UI = (function () {
       cancelAnimationFrame(gameLoopId);
       gameLoopId = null;
     }
+  }
+
+  // ============================================
+  // Tab Navigation
+  // ============================================
+
+  function showTab(tabName) {
+    // Update nav tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+    document.getElementById(`nav-${tabName}`).classList.add('active');
+
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+    document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+
+    // Load data for tab
+    if (tabName === 'leaderboard') {
+      loadLeaderboard();
+    } else if (tabName === 'profile') {
+      loadProfile();
+    }
+  }
+
+  // ============================================
+  // Leaderboard
+  // ============================================
+
+  let currentLeaderboardPeriod = 'all';
+
+  async function loadLeaderboard(period = currentLeaderboardPeriod) {
+    currentLeaderboardPeriod = period;
+
+    // Update active filter button
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`filter-${period}`).classList.add('active');
+
+    const list = document.getElementById('leaderboard-list');
+    list.innerHTML = '<div class="loading">Loading...</div>';
+
+    try {
+      const response = await fetch(`/api/leaderboard?limit=50&period=${period}`);
+      // MEDIUM-6: Check HTTP status before parsing JSON
+      if (!response.ok) {
+        throw new Error(`Failed to load leaderboard: ${response.status}`);
+      }
+      const data = await response.json();
+
+      const periodLabel = period === 'all' ? '' : period === 'monthly' ? ' This Month' : ' This Week';
+
+      if (data.leaderboard.length === 0) {
+        list.innerHTML = `<p style="text-align: center; color: var(--text-secondary);">No matches${periodLabel.toLowerCase()} yet. Be the first!</p>`;
+        return;
+      }
+
+      list.innerHTML = `
+        <div class="leaderboard-item header">
+          <span>Rank</span>
+          <span>Player</span>
+          <span>Wins</span>
+          <span>Win Rate</span>
+          <span>Earnings</span>
+        </div>
+      `;
+
+      data.leaderboard.forEach(player => {
+        const item = document.createElement('div');
+        item.className = 'leaderboard-item';
+        // MEDIUM-2: Use textContent for username to prevent XSS (defense-in-depth)
+        item.innerHTML = `
+          <span class="leaderboard-rank">#${player.rank}</span>
+          <div class="leaderboard-player">
+            <span class="leaderboard-username"></span>
+            <span class="leaderboard-wallet">${truncateAddress(player.walletAddress)}</span>
+          </div>
+          <span class="leaderboard-wins">${player.wins}</span>
+          <span class="leaderboard-winrate">${player.winRate}%</span>
+          <span class="leaderboard-earnings">$${player.totalEarnings.toFixed(2)}</span>
+        `;
+        // Set username via textContent to prevent XSS
+        item.querySelector('.leaderboard-username').textContent =
+          player.username || truncateAddress(player.walletAddress);
+        list.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Failed to load leaderboard:', error);
+      list.innerHTML = '<p style="text-align: center; color: var(--accent);">Failed to load leaderboard</p>';
+    }
+  }
+
+  // ============================================
+  // Profile
+  // ============================================
+
+  let currentPlayerStats = null;
+
+  async function loadProfile() {
+    const address = Wallet.getAddress();
+    if (!address) return;
+
+    // Set wallet display
+    document.getElementById('profile-wallet').textContent = truncateAddress(address);
+
+    try {
+      const response = await fetch(`/api/player/${address}`);
+
+      if (response.status === 404) {
+        // Player hasn't played yet
+        showNoMatchesState();
+        return;
+      }
+
+      const data = await response.json();
+      currentPlayerStats = data;
+
+      // Update profile header
+      document.getElementById('profile-username').textContent = data.username || truncateAddress(address);
+
+      // Profile photo
+      const photoEl = document.getElementById('profile-photo');
+      if (data.profilePhoto) {
+        photoEl.src = data.profilePhoto;
+      } else {
+        photoEl.src = generateDefaultAvatar(address);
+      }
+
+      // Show edit buttons if player has matches
+      if (data.stats.totalMatches > 0) {
+        document.getElementById('edit-username-btn').classList.remove('hidden');
+        document.getElementById('change-photo-btn').classList.remove('hidden');
+        document.getElementById('profile-no-matches').classList.add('hidden');
+      } else {
+        showNoMatchesState();
+      }
+
+      // Update stats
+      document.getElementById('stat-matches').textContent = data.stats.totalMatches;
+      document.getElementById('stat-wins').textContent = data.stats.wins;
+      document.getElementById('stat-winrate').textContent = `${data.stats.winRate}%`;
+      document.getElementById('stat-profit').textContent = `$${data.stats.netProfit >= 0 ? '+' : ''}${data.stats.netProfit.toFixed(2)}`;
+      document.getElementById('stat-streak').textContent = data.stats.bestWinStreak;
+
+      // Color profit based on value
+      const profitEl = document.getElementById('stat-profit');
+      profitEl.style.color = data.stats.netProfit >= 0 ? 'var(--success)' : 'var(--accent)';
+
+      // Load match history
+      loadMatchHistory(address);
+
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+    }
+  }
+
+  function showNoMatchesState() {
+    document.getElementById('profile-no-matches').classList.remove('hidden');
+    document.getElementById('edit-username-btn').classList.add('hidden');
+    document.getElementById('change-photo-btn').classList.add('hidden');
+
+    // Set default photo
+    const address = Wallet.getAddress();
+    document.getElementById('profile-photo').src = generateDefaultAvatar(address);
+
+    // Zero stats
+    document.getElementById('stat-matches').textContent = '0';
+    document.getElementById('stat-wins').textContent = '0';
+    document.getElementById('stat-winrate').textContent = '0%';
+    document.getElementById('stat-profit').textContent = '$0.00';
+    document.getElementById('stat-streak').textContent = '0';
+
+    // Clear match history
+    document.getElementById('match-history-list').innerHTML = '<p style="text-align: center; color: var(--text-secondary);">No matches yet</p>';
+  }
+
+  async function loadMatchHistory(address) {
+    const list = document.getElementById('match-history-list');
+
+    try {
+      const response = await fetch(`/api/player/${address}/history?limit=10`);
+      // MEDIUM-6: Check HTTP status before parsing JSON
+      if (!response.ok) {
+        throw new Error(`Failed to load history: ${response.status}`);
+      }
+      const data = await response.json();
+
+      if (!data.matches || data.matches.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">No matches yet</p>';
+        return;
+      }
+
+      list.innerHTML = '';
+      data.matches.forEach(match => {
+        const item = document.createElement('div');
+        item.className = `match-item ${match.result}`;
+
+        const date = new Date(match.endedAt);
+        const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const opponents = match.opponents.map(o => o.username || truncateAddress(o.walletAddress)).join(', ');
+
+        item.innerHTML = `
+          <div class="match-details">
+            <span class="match-result">${match.result}</span>
+            <span class="match-opponents">vs ${opponents}</span>
+          </div>
+          <div class="match-meta">
+            ${match.result === 'win' ? `<span class="match-payout">+$${match.payout.toFixed(2)}</span>` : ''}
+            <span class="match-date">${dateStr}</span>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    } catch (error) {
+      console.error('Failed to load match history:', error);
+      list.innerHTML = '<p style="text-align: center; color: var(--accent);">Failed to load history</p>';
+    }
+  }
+
+  function generateDefaultAvatar(address) {
+    // Generate a simple colored avatar based on wallet address
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const ctx = canvas.getContext('2d');
+
+    // Use address to generate color
+    const hash = address.slice(2, 8);
+    const hue = parseInt(hash, 16) % 360;
+
+    ctx.fillStyle = `hsl(${hue}, 60%, 50%)`;
+    ctx.fillRect(0, 0, 100, 100);
+
+    // Add initials or icon
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 40px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(address.slice(2, 4).toUpperCase(), 50, 50);
+
+    return canvas.toDataURL();
+  }
+
+  // ============================================
+  // Username Modal
+  // ============================================
+
+  function showUsernameModal() {
+    const modal = document.getElementById('username-modal');
+    const input = document.getElementById('username-input');
+    const error = document.getElementById('username-error');
+
+    input.value = currentPlayerStats?.username || '';
+    error.classList.add('hidden');
+    modal.classList.remove('hidden');
+    input.focus();
+  }
+
+  function hideUsernameModal() {
+    document.getElementById('username-modal').classList.add('hidden');
+  }
+
+  async function handleSaveUsername() {
+    const input = document.getElementById('username-input');
+    const error = document.getElementById('username-error');
+    const btn = document.getElementById('save-username-btn');
+
+    const username = input.value.trim();
+
+    if (!username) {
+      error.textContent = 'Username is required';
+      error.classList.remove('hidden');
+      return;
+    }
+
+    btn.disabled = true;
+    error.classList.add('hidden');
+
+    try {
+      const token = sessionStorage.getItem('sessionToken');
+      const response = await fetch('/api/player/username', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ username }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        error.textContent = data.error || 'Failed to save username';
+        error.classList.remove('hidden');
+        return;
+      }
+
+      // Success - update UI
+      document.getElementById('profile-username').textContent = data.username;
+      document.getElementById('user-display').textContent = data.username;
+      hideUsernameModal();
+
+    } catch (err) {
+      error.textContent = 'Network error. Please try again.';
+      error.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ============================================
+  // Photo Upload
+  // ============================================
+
+  async function handlePhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (500KB)
+    if (file.size > 500000) {
+      alert('Image must be smaller than 500KB');
+      return;
+    }
+
+    try {
+      // Resize and convert to base64
+      const photoData = await resizeImage(file, 200, 200);
+
+      const token = sessionStorage.getItem('sessionToken');
+      const response = await fetch('/api/player/photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ photo: photoData }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || 'Failed to upload photo');
+        return;
+      }
+
+      // Update photo display
+      document.getElementById('profile-photo').src = photoData;
+
+    } catch (err) {
+      console.error('Photo upload failed:', err);
+      alert('Failed to upload photo');
+    }
+
+    // Clear input for next upload
+    event.target.value = '';
+  }
+
+  function resizeImage(file, maxWidth, maxHeight) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        img.src = e.target.result;
+      };
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Calculate new dimensions
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+
+      img.onerror = reject;
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ============================================
+  // Utility
+  // ============================================
+
+  function truncateAddress(address) {
+    if (!address) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
 
   // ============================================

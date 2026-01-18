@@ -114,6 +114,8 @@ CREATE INDEX IF NOT EXISTS idx_lobby_players_lobby ON lobby_players(lobby_id);
 CREATE INDEX IF NOT EXISTS idx_lobby_players_user ON lobby_players(user_id);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
 CREATE INDEX IF NOT EXISTS idx_matches_lobby ON matches(lobby_id);
+-- HIGH-3: Composite index for time-filtered leaderboard queries (weekly/monthly)
+CREATE INDEX IF NOT EXISTS idx_matches_status_ended ON matches(status, ended_at);
 CREATE INDEX IF NOT EXISTS idx_match_events_match ON match_events(match_id);
 CREATE INDEX IF NOT EXISTS idx_match_players_match ON match_players(match_id);
 CREATE INDEX IF NOT EXISTS idx_match_players_user ON match_players(user_id);
@@ -131,3 +133,33 @@ CREATE TABLE IF NOT EXISTS match_state (
 );
 
 CREATE INDEX IF NOT EXISTS idx_match_state_status ON match_state(status);
+
+-- Player stats table (denormalized for performance)
+-- Stats are tracked by wallet address (only created when player pays to join a match)
+-- Username and profile photo can only be set after completing at least one match
+CREATE TABLE IF NOT EXISTS player_stats (
+  wallet_address TEXT PRIMARY KEY,
+  username TEXT UNIQUE,
+  profile_photo TEXT,
+  total_matches INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0,
+  total_earnings_usdc REAL NOT NULL DEFAULT 0,
+  total_spent_usdc REAL NOT NULL DEFAULT 0,
+  current_win_streak INTEGER NOT NULL DEFAULT 0,
+  best_win_streak INTEGER NOT NULL DEFAULT 0,
+  first_match_at TEXT,
+  last_match_at TEXT,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_stats_wins ON player_stats(wins DESC);
+CREATE INDEX IF NOT EXISTS idx_player_stats_earnings ON player_stats(total_earnings_usdc DESC);
+CREATE INDEX IF NOT EXISTS idx_player_stats_username ON player_stats(username);
+
+-- Reserved usernames (prevents re-use even after username change)
+CREATE TABLE IF NOT EXISTS reserved_usernames (
+  username TEXT PRIMARY KEY,
+  reserved_by TEXT NOT NULL,
+  reserved_at TEXT DEFAULT (datetime('now'))
+);

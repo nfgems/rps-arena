@@ -88,16 +88,22 @@ const Network = (function () {
         stopPing();
 
         if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
-          // Attempt reconnection
+          // Attempt reconnection with exponential backoff + jitter (MEDIUM-3)
           reconnectAttempts++;
+          const baseDelay = 1000;
+          const maxDelay = 30000;
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s (capped at 30s)
+          const backoff = Math.min(baseDelay * Math.pow(2, reconnectAttempts - 1), maxDelay);
+          // Add jitter (50-100% of backoff) to prevent thundering herd
+          const jitter = backoff * (0.5 + Math.random() * 0.5);
+          console.log(`Reconnecting in ${Math.round(jitter)}ms... attempt ${reconnectAttempts}`);
           setTimeout(() => {
-            console.log(`Reconnecting... attempt ${reconnectAttempts}`);
             connect(sessionToken).catch((err) => {
               console.error('Reconnection failed:', err);
               // Reset userId on reconnection failure to prevent stale auth state
               userId = null;
             });
-          }, 1000 * reconnectAttempts);
+          }, jitter);
         } else if (reconnectAttempts >= maxReconnectAttempts) {
           // All reconnection attempts exhausted - reset state
           console.log('Max reconnection attempts reached, resetting state');
@@ -238,6 +244,20 @@ const Network = (function () {
   on('PONG', (message) => {
     currentPing = Date.now() - lastPing;
     emit('pingUpdate', currentPing);
+  });
+
+  // Handle TOKEN_UPDATE messages (token rotation for security - CRITICAL-2)
+  on('TOKEN_UPDATE', (message) => {
+    if (message.token) {
+      sessionToken = message.token;
+      // Persist new token to sessionStorage
+      try {
+        sessionStorage.setItem('sessionToken', message.token);
+      } catch (e) {
+        console.warn('Failed to persist rotated token:', e);
+      }
+      console.log('Session token rotated');
+    }
   });
 
   /**

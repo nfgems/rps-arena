@@ -1,8 +1,9 @@
 # RPS-ARENA Production Launch Checklist
 
 > **Status**: IN PROGRESS
-> **Last Updated**: 2026-01-17
-> **Current Phase**: Phase 4 - User Features
+> **Last Updated**: 2026-01-18
+> **Current Phase**: Phase 5 - Infrastructure & Deployment
+> **Note**: Phase 4 audit fixes completed (see section 4.5)
 
 This is the master checklist for taking RPS-ARENA from test/prototype to a live production game. Each item must be completed and checked off before launch.
 
@@ -210,28 +211,56 @@ This approach is MORE secure than removal because:
 *Features needed for a complete user experience*
 
 ### 4.1 User Stats & Progression
-- [ ] **Track wins/losses per user** in database
-- [ ] **Calculate win rate** and display on profile
-- [ ] **Track total earnings/losses** in USDC
-- [ ] **Show match history** with timestamps and outcomes
-- [ ] **Create user profile page** with stats
+- [x] **Track wins/losses per player** in database - ✅ Added `player_stats` table keyed by wallet_address (only created when player pays to join); tracks wins, losses, streaks, earnings/spending
+- [x] **Track total earnings/losses** in USDC - ✅ `total_earnings_usdc` and `total_spent_usdc` tracked in `player_stats`
+- [x] **Calculate win rate** and display on profile - ✅ Win rate calculated in `/api/player/:wallet` endpoint
+- [x] **Show match history** with timestamps and outcomes - ✅ `/api/player/:wallet/history` endpoint with opponents, roles, results
+- [x] **Create user profile page** with stats - ✅ Added profile tab with stats, match history, photo upload, username editing
+- [x] **Username system** - ✅ Usernames permanently reserved (no re-use); requires 1+ completed match to set
+- [x] **Profile photo upload** - ✅ Base64 image storage with 500KB limit; requires 1+ completed match
 
 ### 4.2 Leaderboard
-- [ ] **Create leaderboard database query** - Top 100 by wins
-- [ ] **Add leaderboard API endpoint** (`/api/leaderboard`)
-- [ ] **Build leaderboard UI** in client
-- [ ] **Add time-based filters** (all-time, monthly, weekly)
+- [x] **Create leaderboard database query** - ✅ `getLeaderboard()` returns top players by wins
+- [x] **Add leaderboard API endpoint** - ✅ `/api/leaderboard` with win rates, earnings, streaks
+- [x] **Build leaderboard UI** in client - ✅ Added leaderboard tab showing top 50 players with rank, wins, winrate, earnings
+- [x] **Add time-based filters** (all-time, monthly, weekly) - ✅ Added `?period=all|monthly|weekly` to `/api/leaderboard`; UI filter buttons in client
 
 ### 4.3 Match History
-- [ ] **Query function for user's match history**
-- [ ] **Display last 20 matches** on profile
-- [ ] **Show match details** - Players, roles, outcome, payout
+- [x] **Query function for user's match history** - ✅ `getPlayerMatchHistory()` in database.js
+- [x] **Display last 20 matches** on profile - ✅ Available via `/api/player/:wallet/history?limit=20`
+- [x] **Show match details** - ✅ Returns players, roles, outcome, payout per match
 
 ### 4.4 Reconnection Improvements
-- [ ] **Add reconnection grace period** (30-60 seconds)
-- [ ] **Persist connection tokens** for reconnection
-- [ ] **Notify other players** of disconnect/reconnect
-- [ ] **Handle wallet account changes** during match
+- [x] **Add reconnection grace period** (30-60 seconds) - ✅ `RECONNECT_GRACE_PERIOD=30` env var; disconnected players have 30s to reconnect before auto-elimination
+- [x] **Persist connection tokens** for reconnection - ✅ Session tokens used for auth allow reconnection to active match via `handleReconnect()`
+- [x] **Notify other players** of disconnect/reconnect - ✅ `PLAYER_DISCONNECT` and `PLAYER_RECONNECT` messages; visual "DC" indicator on disconnected players
+- [x] **Handle wallet account changes** during match - ✅ Wallet changes during match = forfeit; player gets disconnected and grace period applies
+
+### 4.5 Phase 4 Audit Fixes ✅ COMPLETE (2026-01-18)
+*Security and reliability fixes identified in Phase 4 audit (see docs/PHASE4_AUDIT_REPORT.md)*
+
+#### Critical Fixes
+- [x] **CRITICAL-1: Win streak race condition** - ✅ Changed `recordMatchResult()` to use atomic SQL `CASE WHEN` for streak calculation instead of read-calculate-write pattern
+- [x] **CRITICAL-2: Session token replay attack** - ✅ Added `rotateToken()` in session.js; tokens rotated on reconnection to prevent hijacking; `TOKEN_UPDATE` message sent to client
+
+#### High Priority Fixes
+- [x] **HIGH-1: Grace period not persisted** - ✅ Added `disconnectedAt` to `persistMatchState()` for crash recovery
+- [x] **HIGH-2: Reconnect/grace period race** - ✅ Added `clearGracePeriod()` called immediately on reconnect message receipt before `handleReconnect()`
+- [x] **HIGH-3: Missing composite index** - ✅ Added `idx_matches_status_ended ON matches(status, ended_at)` for time-filtered leaderboard queries
+- [x] **HIGH-4: Incomplete pagination** - ✅ Added `offset` parameter to `getPlayerMatchHistory()`, new `getPlayerMatchCount()` function, updated API with pagination response
+
+#### Medium Priority Fixes
+- [x] **MEDIUM-2: XSS defense-in-depth** - ✅ Changed leaderboard username display to use `textContent` instead of innerHTML
+- [x] **MEDIUM-3: Linear reconnection backoff** - ✅ Implemented exponential backoff with jitter in client network.js (1s→2s→4s→8s→16s, capped at 30s)
+- [x] **MEDIUM-4: Duplicate reconnect protection** - ✅ Added cleanup of old WebSocket (`oldWs.close(1008)`) before reconnection in `handleReconnect()`
+- [x] **MEDIUM-6: Missing HTTP status check** - ✅ Added `response.ok` checks in ui.js for leaderboard and match history fetches
+- [x] **MEDIUM-7: Negative limit validation** - ✅ Added `Math.max(1, ...)` to limit parsing in `/api/leaderboard` and `/api/player/:wallet/history`
+
+#### Deferred (Lower Priority)
+- [ ] **MEDIUM-1: USDC floating-point** - Requires schema migration to INTEGER with microUSDC
+- [ ] **MEDIUM-5: N+1 query pattern** - Performance optimization for match history opponents
+- [ ] **MEDIUM-8: Username case-sensitivity** - Design decision on normalization
+- [ ] **MEDIUM-9: Stat scope mismatch** - API design decision for time-filtered stats
 
 ---
 
@@ -384,7 +413,7 @@ This approach is MORE secure than removal because:
 | Phase 1: Security | ✅ Complete | 100% (1.1 ✅, 1.2 ✅, 1.3 ✅, 1.4 ✅) |
 | Phase 2: Error Handling | ✅ Complete | 100% (2.1 ✅, 2.2 ✅, 2.3 ✅, 2.4 ✅, 2.5 ✅, 2.6 ✅) |
 | Phase 3: Code Cleanup | ✅ Complete | 100% (3.1 ✅, 3.2 ✅, 3.3 ✅) |
-| Phase 4: User Features | ⬜ Not Started | 0% |
+| Phase 4: User Features | ✅ Complete | 100% (4.1 ✅, 4.2 ✅, 4.3 ✅, 4.4 ✅, 4.5 ✅) |
 | Phase 5: Infrastructure | ⬜ Not Started | 0% |
 | Phase 6: Testing | ⬜ Not Started | 0% |
 | Phase 7: Launch Prep | ⬜ Not Started | 0% |

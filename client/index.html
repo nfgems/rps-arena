@@ -31,17 +31,97 @@
   <div id="lobby-screen" class="screen hidden">
     <header class="lobby-header">
       <h2>RPS ARENA</h2>
+      <nav class="nav-tabs">
+        <button id="nav-lobbies" class="nav-tab active">Lobbies</button>
+        <button id="nav-leaderboard" class="nav-tab">Leaderboard</button>
+        <button id="nav-profile" class="nav-tab">Profile</button>
+      </nav>
       <div class="user-info">
         <span id="user-display"></span>
         <button id="disconnect-btn" class="btn btn-link">Disconnect</button>
       </div>
     </header>
-    <div class="lobby-content">
-      <h3>Select a Lobby</h3>
-      <div id="lobby-list" class="lobby-list">
-        <!-- Lobbies populated by JS -->
+
+    <!-- Lobbies Tab Content -->
+    <div id="lobbies-tab" class="tab-content">
+      <div class="lobby-content">
+        <h3>Select a Lobby</h3>
+        <div id="lobby-list" class="lobby-list">
+          <!-- Lobbies populated by JS -->
+        </div>
+        <div class="ping-display">Ping: <span id="ping-value">--</span>ms</div>
       </div>
-      <div class="ping-display">Ping: <span id="ping-value">--</span>ms</div>
+    </div>
+
+    <!-- Leaderboard Tab Content -->
+    <div id="leaderboard-tab" class="tab-content hidden">
+      <div class="leaderboard-content">
+        <div class="leaderboard-header">
+          <h3>Top Players</h3>
+          <div class="leaderboard-filters">
+            <button id="filter-all" class="filter-btn active">All Time</button>
+            <button id="filter-monthly" class="filter-btn">This Month</button>
+            <button id="filter-weekly" class="filter-btn">This Week</button>
+          </div>
+        </div>
+        <div id="leaderboard-list" class="leaderboard-list">
+          <!-- Leaderboard populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Profile Tab Content -->
+    <div id="profile-tab" class="tab-content hidden">
+      <div class="profile-content">
+        <div class="profile-header">
+          <div class="profile-photo-container">
+            <img id="profile-photo" src="" alt="Profile" class="profile-photo">
+            <button id="change-photo-btn" class="btn btn-small hidden">Change Photo</button>
+            <input type="file" id="photo-input" accept="image/*" class="hidden">
+          </div>
+          <div class="profile-info">
+            <div class="username-container">
+              <span id="profile-username" class="profile-username">-</span>
+              <button id="edit-username-btn" class="btn btn-small hidden">Edit</button>
+            </div>
+            <span id="profile-wallet" class="profile-wallet">-</span>
+          </div>
+        </div>
+
+        <div id="profile-no-matches" class="profile-notice hidden">
+          <p>Complete a match to unlock profile customization!</p>
+        </div>
+
+        <div class="profile-stats">
+          <div class="stat-card">
+            <span class="stat-value" id="stat-matches">0</span>
+            <span class="stat-label">Matches</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-wins">0</span>
+            <span class="stat-label">Wins</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-winrate">0%</span>
+            <span class="stat-label">Win Rate</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-profit">$0.00</span>
+            <span class="stat-label">Net Profit</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value" id="stat-streak">0</span>
+            <span class="stat-label">Best Streak</span>
+          </div>
+        </div>
+
+        <div class="match-history">
+          <h4>Recent Matches</h4>
+          <div id="match-history-list" class="match-history-list">
+            <!-- Match history populated by JS -->
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -84,6 +164,20 @@
         <!-- Standings populated by JS -->
       </div>
       <button id="play-again-btn" class="btn btn-primary">Play Again</button>
+    </div>
+  </div>
+
+  <!-- Username Edit Modal -->
+  <div id="username-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Set Username</h3>
+      <p>Choose a unique username (3-20 characters, letters, numbers, underscores only)</p>
+      <input type="text" id="username-input" class="text-input" placeholder="Enter username" maxlength="20">
+      <p id="username-error" class="error-text hidden"></p>
+      <div class="modal-actions">
+        <button id="save-username-btn" class="btn btn-primary">Save</button>
+        <button id="cancel-username-btn" class="btn btn-secondary">Cancel</button>
+      </div>
     </div>
   </div>
 

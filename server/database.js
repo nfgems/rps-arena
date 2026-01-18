@@ -553,6 +553,23 @@ function cleanExpiredSessions() {
   }, null);
 }
 
+/**
+ * Update session token (for token rotation on sensitive operations)
+ * Generates a new token and invalidates the old one
+ * @param {string} sessionId - Session UUID
+ * @param {string} newToken - New token to set
+ * @returns {Object|null} Update result or null on error
+ */
+function updateSessionToken(sessionId, newToken) {
+  return withDbErrorHandling('updateSessionToken', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      UPDATE sessions SET token = ? WHERE id = ?
+    `);
+    return stmt.run(newToken, sessionId);
+  }, null);
+}
+
 // ============================================
 // Lobby Operations
 // ============================================
@@ -1240,6 +1257,548 @@ function endMatchWithLobbyReset(matchId, winnerId, payoutAmount, payoutTxHash, l
 }
 
 // ============================================
+// Player Stats Operations
+// ============================================
+
+/**
+ * Get player stats by wallet address
+ * @param {string} walletAddress - Ethereum wallet address
+ * @returns {Object|null} Player stats or null if not found
+ */
+function getPlayerStats(walletAddress) {
+  return withDbErrorHandling('getPlayerStats', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      SELECT * FROM player_stats WHERE wallet_address = ?
+    `);
+    return stmt.get(walletAddress.toLowerCase());
+  }, null);
+}
+
+/**
+ * Record a match result for a player (win or loss)
+ * Creates stats record on first match, updates atomically after each match
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @param {boolean} isWin - True if player won the match
+ * @param {number} earningsUsdc - Amount earned (payout for winner, 0 for loser)
+ * @param {number} spentUsdc - Amount spent to enter (buy-in amount)
+ * @returns {Object|null} Updated stats or null on error
+ */
+function recordMatchResult(walletAddress, isWin, earningsUsdc = 0, spentUsdc = 0) {
+  return withTransaction('recordMatchResult', (database) => {
+    const now = new Date().toISOString();
+    const normalizedAddress = walletAddress.toLowerCase();
+    const isWinInt = isWin ? 1 : 0;
+
+    // Check if player exists
+    const checkStmt = database.prepare('SELECT wallet_address FROM player_stats WHERE wallet_address = ?');
+    const exists = checkStmt.get(normalizedAddress);
+
+    if (!exists) {
+      // First match for this player - create record
+      // For new players: streak is 1 on win, 0 on loss
+      const insertStmt = database.prepare(`
+        INSERT INTO player_stats (
+          wallet_address, total_matches, wins, losses,
+          total_earnings_usdc, total_spent_usdc,
+          current_win_streak, best_win_streak,
+          first_match_at, last_match_at, updated_at
+        ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      insertStmt.run(
+        normalizedAddress,
+        isWinInt,
+        isWin ? 0 : 1,
+        earningsUsdc,
+        spentUsdc,
+        isWinInt,  // current_win_streak: 1 for win, 0 for loss
+        isWinInt,  // best_win_streak: 1 for win, 0 for loss
+        now,
+        now,
+        now
+      );
+    } else {
+      // Update existing record with atomic SQL-based streak calculation
+      // This prevents race conditions by calculating in DB rather than JS
+      const updateStmt = database.prepare(`
+        UPDATE player_stats SET
+          total_matches = total_matches + 1,
+          wins = wins + ?,
+          losses = losses + ?,
+          total_earnings_usdc = total_earnings_usdc + ?,
+          total_spent_usdc = total_spent_usdc + ?,
+          current_win_streak = CASE WHEN ? = 1 THEN current_win_streak + 1 ELSE 0 END,
+          best_win_streak = MAX(best_win_streak, CASE WHEN ? = 1 THEN current_win_streak + 1 ELSE 0 END),
+          last_match_at = ?,
+          updated_at = ?
+        WHERE wallet_address = ?
+      `);
+      updateStmt.run(
+        isWinInt,
+        isWin ? 0 : 1,
+        earningsUsdc,
+        spentUsdc,
+        isWinInt,  // for current_win_streak CASE
+        isWinInt,  // for best_win_streak CASE
+        now,
+        now,
+        normalizedAddress
+      );
+    }
+
+    // Return updated stats
+    const resultStmt = database.prepare('SELECT * FROM player_stats WHERE wallet_address = ?');
+    return resultStmt.get(normalizedAddress);
+  });
+}
+
+/**
+ * Set or update a player's username
+ * Requires player to have completed at least one match
+ * Usernames are permanently reserved once claimed
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @param {string} username - Desired username (must be unique and not reserved)
+ * @returns {{success: boolean, error?: string}} Result
+ */
+function setPlayerUsername(walletAddress, username) {
+  return withTransaction('setPlayerUsername', (database) => {
+    const normalizedAddress = walletAddress.toLowerCase();
+    const normalizedUsername = username.trim();
+
+    // Validate username format
+    if (!normalizedUsername || normalizedUsername.length < 3 || normalizedUsername.length > 20) {
+      return { success: false, error: 'Username must be 3-20 characters' };
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(normalizedUsername)) {
+      return { success: false, error: 'Username can only contain letters, numbers, and underscores' };
+    }
+
+    // Check if player exists and has played at least one match
+    const checkStmt = database.prepare('SELECT wallet_address, total_matches, username FROM player_stats WHERE wallet_address = ?');
+    const player = checkStmt.get(normalizedAddress);
+
+    if (!player) {
+      return { success: false, error: 'You must complete a match before setting a username' };
+    }
+
+    if (player.total_matches < 1) {
+      return { success: false, error: 'You must complete at least one match before setting a username' };
+    }
+
+    // Check if username is reserved (permanently claimed)
+    const reservedStmt = database.prepare('SELECT username FROM reserved_usernames WHERE LOWER(username) = LOWER(?)');
+    const reserved = reservedStmt.get(normalizedUsername);
+
+    if (reserved) {
+      return { success: false, error: 'Username is not available' };
+    }
+
+    // Check if username is currently in use by another player
+    const usernameStmt = database.prepare('SELECT wallet_address FROM player_stats WHERE LOWER(username) = LOWER(?) AND wallet_address != ?');
+    const existing = usernameStmt.get(normalizedUsername, normalizedAddress);
+
+    if (existing) {
+      return { success: false, error: 'Username is already taken' };
+    }
+
+    // Reserve the new username permanently
+    const reserveStmt = database.prepare('INSERT OR IGNORE INTO reserved_usernames (username, reserved_by) VALUES (?, ?)');
+    reserveStmt.run(normalizedUsername, normalizedAddress);
+
+    // Update player's username
+    const updateStmt = database.prepare('UPDATE player_stats SET username = ?, updated_at = ? WHERE wallet_address = ?');
+    updateStmt.run(normalizedUsername, new Date().toISOString(), normalizedAddress);
+
+    return { success: true };
+  }) || { success: false, error: 'Database error' };
+}
+
+/**
+ * Set or update a player's profile photo
+ * Requires player to have completed at least one match
+ * Photo is stored as base64 data URL
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @param {string} photoData - Base64 encoded image data (data:image/...)
+ * @returns {{success: boolean, error?: string}} Result
+ */
+function setPlayerPhoto(walletAddress, photoData) {
+  return withDbErrorHandling('setPlayerPhoto', () => {
+    const database = getDb();
+    const normalizedAddress = walletAddress.toLowerCase();
+
+    // Check if player exists and has played at least one match
+    const checkStmt = database.prepare('SELECT wallet_address, total_matches FROM player_stats WHERE wallet_address = ?');
+    const player = checkStmt.get(normalizedAddress);
+
+    if (!player) {
+      return { success: false, error: 'You must complete a match before setting a profile photo' };
+    }
+
+    if (player.total_matches < 1) {
+      return { success: false, error: 'You must complete at least one match before setting a profile photo' };
+    }
+
+    // Validate photo data
+    if (!photoData || !photoData.startsWith('data:image/')) {
+      return { success: false, error: 'Invalid image format' };
+    }
+
+    // Check size (limit to ~500KB base64 which is ~375KB actual)
+    if (photoData.length > 500000) {
+      return { success: false, error: 'Image too large (max 500KB)' };
+    }
+
+    // Update profile photo
+    const updateStmt = database.prepare('UPDATE player_stats SET profile_photo = ?, updated_at = ? WHERE wallet_address = ?');
+    updateStmt.run(photoData, new Date().toISOString(), normalizedAddress);
+
+    return { success: true };
+  }, { success: false, error: 'Database error' });
+}
+
+/**
+ * Get top players by wins (leaderboard)
+ * Supports time-based filtering (all-time, monthly, weekly)
+ *
+ * @param {number} limit - Max number of players to return
+ * @param {string} timeFilter - 'all' (default), 'monthly', or 'weekly'
+ * @returns {Array} Top players sorted by wins
+ */
+function getLeaderboard(limit = 100, timeFilter = 'all') {
+  return withDbErrorHandling('getLeaderboard', () => {
+    const database = getDb();
+
+    // For all-time, use the denormalized player_stats table (faster)
+    if (timeFilter === 'all') {
+      const stmt = database.prepare(`
+        SELECT * FROM player_stats
+        WHERE total_matches > 0
+        ORDER BY wins DESC, total_earnings_usdc DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit);
+    }
+
+    // For time-filtered leaderboards, calculate from matches table
+    let startDate;
+    const now = new Date();
+
+    if (timeFilter === 'weekly') {
+      // Start of current week (Monday)
+      const dayOfWeek = now.getDay();
+      const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - daysFromMonday);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (timeFilter === 'monthly') {
+      // Start of current month
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      // Invalid filter, fall back to all-time
+      const stmt = database.prepare(`
+        SELECT * FROM player_stats
+        WHERE total_matches > 0
+        ORDER BY wins DESC, total_earnings_usdc DESC
+        LIMIT ?
+      `);
+      return stmt.all(limit);
+    }
+
+    const startDateStr = startDate.toISOString();
+
+    // Calculate wins, losses, and earnings within the time period
+    const stmt = database.prepare(`
+      SELECT
+        u.wallet_address,
+        ps.username,
+        ps.profile_photo,
+        COUNT(*) as total_matches,
+        SUM(CASE WHEN m.winner_id = u.id THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN m.winner_id != u.id AND m.status = 'finished' THEN 1 ELSE 0 END) as losses,
+        SUM(CASE WHEN m.winner_id = u.id THEN COALESCE(m.payout_amount, 0) ELSE 0 END) as total_earnings_usdc,
+        ps.best_win_streak
+      FROM users u
+      JOIN match_players mp ON mp.user_id = u.id
+      JOIN matches m ON mp.match_id = m.id
+      LEFT JOIN player_stats ps ON u.wallet_address = ps.wallet_address
+      WHERE m.status = 'finished' AND m.ended_at >= ?
+      GROUP BY u.wallet_address
+      ORDER BY wins DESC, total_earnings_usdc DESC
+      LIMIT ?
+    `);
+
+    return stmt.all(startDateStr, limit);
+  }, []);
+}
+
+/**
+ * Get match history for a player by wallet address
+ * Returns recent matches with details about opponents, roles, and outcomes
+ * HIGH-4: Added offset parameter for pagination support
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @param {number} limit - Max number of matches to return (default 20)
+ * @param {number} offset - Number of matches to skip (default 0)
+ * @returns {Array} Array of match records with details
+ */
+function getPlayerMatchHistory(walletAddress, limit = 20, offset = 0) {
+  return withDbErrorHandling('getPlayerMatchHistory', () => {
+    const database = getDb();
+    const normalizedAddress = walletAddress.toLowerCase();
+
+    // First get user_id for this wallet
+    const userStmt = database.prepare('SELECT id FROM users WHERE wallet_address = ?');
+    const user = userStmt.get(normalizedAddress);
+
+    if (!user) {
+      return [];
+    }
+
+    // Get finished matches for this player with all details
+    const matchesStmt = database.prepare(`
+      SELECT
+        m.id as match_id,
+        m.lobby_id,
+        m.status,
+        m.winner_id,
+        m.payout_amount,
+        m.payout_tx_hash,
+        m.ended_at,
+        mp.role as player_role,
+        mp.eliminated_at,
+        mp.eliminated_by
+      FROM matches m
+      JOIN match_players mp ON m.id = mp.match_id
+      WHERE mp.user_id = ? AND m.status IN ('finished', 'void')
+      ORDER BY m.ended_at DESC
+      LIMIT ? OFFSET ?
+    `);
+    const matches = matchesStmt.all(user.id, limit, offset);
+
+    // For each match, get opponent details
+    const opponentsStmt = database.prepare(`
+      SELECT
+        mp.user_id,
+        mp.role,
+        mp.eliminated_at,
+        u.wallet_address,
+        ps.username
+      FROM match_players mp
+      JOIN users u ON mp.user_id = u.id
+      LEFT JOIN player_stats ps ON u.wallet_address = ps.wallet_address
+      WHERE mp.match_id = ? AND mp.user_id != ?
+    `);
+
+    return matches.map(match => {
+      const opponents = opponentsStmt.all(match.match_id, user.id);
+      const isWin = match.winner_id === user.id;
+      const isVoid = match.status === 'void';
+
+      return {
+        matchId: match.match_id,
+        lobbyId: match.lobby_id,
+        endedAt: match.ended_at,
+        result: isVoid ? 'void' : (isWin ? 'win' : 'loss'),
+        playerRole: match.player_role,
+        payout: isWin ? match.payout_amount : 0,
+        payoutTxHash: isWin ? match.payout_tx_hash : null,
+        eliminatedAt: match.eliminated_at,
+        opponents: opponents.map(opp => ({
+          walletAddress: opp.wallet_address,
+          username: opp.username,
+          role: opp.role,
+        })),
+      };
+    });
+  }, []);
+}
+
+/**
+ * Get total match count for a player (for pagination)
+ * HIGH-4: New function to support pagination
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @returns {number} Total number of finished/void matches
+ */
+function getPlayerMatchCount(walletAddress) {
+  return withDbErrorHandling('getPlayerMatchCount', () => {
+    const database = getDb();
+    const normalizedAddress = walletAddress.toLowerCase();
+
+    // First get user_id for this wallet
+    const userStmt = database.prepare('SELECT id FROM users WHERE wallet_address = ?');
+    const user = userStmt.get(normalizedAddress);
+
+    if (!user) {
+      return 0;
+    }
+
+    const countStmt = database.prepare(`
+      SELECT COUNT(*) as count
+      FROM matches m
+      JOIN match_players mp ON m.id = mp.match_id
+      WHERE mp.user_id = ? AND m.status IN ('finished', 'void')
+    `);
+    return countStmt.get(user.id).count;
+  }, 0);
+}
+
+/**
+ * Calculate and rebuild stats for a player from match history
+ * Useful for fixing inconsistencies or migrating existing data
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @returns {Object|null} Rebuilt stats or null on error
+ */
+function rebuildPlayerStats(walletAddress) {
+  return withTransaction('rebuildPlayerStats', (database) => {
+    const now = new Date().toISOString();
+    const normalizedAddress = walletAddress.toLowerCase();
+
+    // Get user_id for this wallet (needed to query match_players)
+    const userStmt = database.prepare('SELECT id FROM users WHERE wallet_address = ?');
+    const user = userStmt.get(normalizedAddress);
+
+    if (!user) {
+      return null; // No user record means no matches
+    }
+
+    // Get all finished matches for this user
+    const matchesStmt = database.prepare(`
+      SELECT
+        m.id,
+        m.winner_id,
+        m.payout_amount,
+        m.ended_at
+      FROM matches m
+      JOIN match_players mp ON m.id = mp.match_id
+      WHERE mp.user_id = ? AND m.status = 'finished'
+      ORDER BY m.ended_at ASC
+    `);
+    const matches = matchesStmt.all(user.id);
+
+    if (matches.length === 0) {
+      return null; // No finished matches
+    }
+
+    // Calculate stats from history
+    let totalMatches = matches.length;
+    let wins = 0;
+    let losses = 0;
+    let totalEarnings = 0;
+    let totalSpent = 0;
+    let currentStreak = 0;
+    let bestStreak = 0;
+    let firstMatchAt = null;
+    let lastMatchAt = null;
+
+    const buyIn = parseFloat(process.env.BUY_IN_AMOUNT) || 1.0;
+
+    for (const match of matches) {
+      const isWin = match.winner_id === user.id;
+      totalSpent += buyIn;
+
+      if (!firstMatchAt) firstMatchAt = match.ended_at;
+
+      if (isWin) {
+        wins++;
+        totalEarnings += match.payout_amount || 0;
+        currentStreak++;
+        bestStreak = Math.max(bestStreak, currentStreak);
+      } else {
+        losses++;
+        currentStreak = 0;
+      }
+      lastMatchAt = match.ended_at;
+    }
+
+    // Preserve existing username if any
+    const existingStmt = database.prepare('SELECT username FROM player_stats WHERE wallet_address = ?');
+    const existing = existingStmt.get(normalizedAddress);
+
+    // Upsert the stats
+    const upsertStmt = database.prepare(`
+      INSERT INTO player_stats (
+        wallet_address, username, total_matches, wins, losses,
+        total_earnings_usdc, total_spent_usdc,
+        current_win_streak, best_win_streak,
+        first_match_at, last_match_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(wallet_address) DO UPDATE SET
+        total_matches = excluded.total_matches,
+        wins = excluded.wins,
+        losses = excluded.losses,
+        total_earnings_usdc = excluded.total_earnings_usdc,
+        total_spent_usdc = excluded.total_spent_usdc,
+        current_win_streak = excluded.current_win_streak,
+        best_win_streak = excluded.best_win_streak,
+        first_match_at = excluded.first_match_at,
+        last_match_at = excluded.last_match_at,
+        updated_at = excluded.updated_at
+    `);
+    upsertStmt.run(
+      normalizedAddress,
+      existing?.username || null,
+      totalMatches, wins, losses,
+      totalEarnings, totalSpent,
+      currentStreak, bestStreak,
+      firstMatchAt, lastMatchAt, now
+    );
+
+    return {
+      wallet_address: normalizedAddress,
+      total_matches: totalMatches,
+      wins,
+      losses,
+      total_earnings_usdc: totalEarnings,
+      total_spent_usdc: totalSpent,
+      current_win_streak: currentStreak,
+      best_win_streak: bestStreak,
+      first_match_at: firstMatchAt,
+      last_match_at: lastMatchAt,
+    };
+  });
+}
+
+/**
+ * Rebuild stats for all players (migration helper)
+ * @returns {{processed: number, errors: number}} Count of processed players
+ */
+function rebuildAllPlayerStats() {
+  return withDbErrorHandling('rebuildAllPlayerStats', () => {
+    const database = getDb();
+
+    // Get all wallet addresses that have played at least one finished match
+    const walletsStmt = database.prepare(`
+      SELECT DISTINCT u.wallet_address
+      FROM users u
+      JOIN match_players mp ON mp.user_id = u.id
+      JOIN matches m ON mp.match_id = m.id
+      WHERE m.status = 'finished'
+    `);
+    const wallets = walletsStmt.all();
+
+    let processed = 0;
+    let errors = 0;
+
+    for (const { wallet_address } of wallets) {
+      const result = rebuildPlayerStats(wallet_address);
+      if (result) {
+        processed++;
+      } else {
+        errors++;
+      }
+    }
+
+    console.log(`[DB] Rebuilt stats for ${processed} players (${errors} errors)`);
+    return { processed, errors };
+  }, { processed: 0, errors: 0 });
+}
+
+// ============================================
 // Exports
 // ============================================
 
@@ -1270,6 +1829,7 @@ module.exports = {
   getSessionByToken,
   deleteSession,
   cleanExpiredSessions,
+  updateSessionToken,
 
   // Lobbies
   initializeLobbies,
@@ -1321,4 +1881,15 @@ module.exports = {
   createMatchWithPlayers,
   resetLobbyWithPlayers,
   endMatchWithLobbyReset,
+
+  // Player Stats (wallet-address based)
+  getPlayerStats,
+  getPlayerMatchHistory,
+  getPlayerMatchCount,
+  recordMatchResult,
+  setPlayerUsername,
+  setPlayerPhoto,
+  getLeaderboard,
+  rebuildPlayerStats,
+  rebuildAllPlayerStats,
 };

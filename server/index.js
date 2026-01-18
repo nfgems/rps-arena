@@ -105,6 +105,167 @@ function setupSharedRoutes(expressApp) {
     const lobbies = lobby.getLobbyList();
     res.json({ lobbies });
   });
+
+  // Get player stats by wallet address
+  expressApp.get('/api/player/:wallet', (req, res) => {
+    const { wallet } = req.params;
+
+    if (!wallet || !/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+      return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+
+    const stats = db.getPlayerStats(wallet);
+
+    if (!stats) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    // Calculate win rate
+    const winRate = stats.total_matches > 0
+      ? ((stats.wins / stats.total_matches) * 100).toFixed(1)
+      : '0.0';
+
+    // Calculate net profit/loss
+    const netProfit = stats.total_earnings_usdc - stats.total_spent_usdc;
+
+    res.json({
+      walletAddress: stats.wallet_address,
+      username: stats.username,
+      profilePhoto: stats.profile_photo || null,
+      stats: {
+        totalMatches: stats.total_matches,
+        wins: stats.wins,
+        losses: stats.losses,
+        winRate: parseFloat(winRate),
+        totalEarnings: stats.total_earnings_usdc,
+        totalSpent: stats.total_spent_usdc,
+        netProfit: parseFloat(netProfit.toFixed(2)),
+        currentWinStreak: stats.current_win_streak,
+        bestWinStreak: stats.best_win_streak,
+      },
+      firstMatchAt: stats.first_match_at,
+      lastMatchAt: stats.last_match_at,
+    });
+  });
+
+  // Get player match history (HIGH-4: Added pagination with offset support)
+  expressApp.get('/api/player/:wallet/history', (req, res) => {
+    const { wallet } = req.params;
+    // HIGH-4 + MEDIUM-7: Validate and clamp limit/offset
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 20), 100);
+    const offset = Math.max(0, parseInt(req.query.offset) || 0);
+
+    if (!wallet || !/^0x[a-fA-F0-9]{40}$/.test(wallet)) {
+      return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+
+    const history = db.getPlayerMatchHistory(wallet, limit, offset);
+    const total = db.getPlayerMatchCount(wallet);
+
+    res.json({
+      matches: history,
+      pagination: {
+        limit,
+        offset,
+        total,
+        hasMore: offset + history.length < total,
+      },
+    });
+  });
+
+  // Get leaderboard (supports time filters: all, monthly, weekly)
+  expressApp.get('/api/leaderboard', (req, res) => {
+    // MEDIUM-7: Clamp limit to prevent negative values
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 100), 100);
+    const timeFilter = ['all', 'monthly', 'weekly'].includes(req.query.period)
+      ? req.query.period
+      : 'all';
+
+    const players = db.getLeaderboard(limit, timeFilter);
+
+    // Format response with win rates
+    const leaderboard = players.map((player, index) => {
+      const winRate = player.total_matches > 0
+        ? ((player.wins / player.total_matches) * 100).toFixed(1)
+        : '0.0';
+
+      return {
+        rank: index + 1,
+        walletAddress: player.wallet_address,
+        username: player.username,
+        wins: player.wins,
+        losses: player.losses,
+        totalMatches: player.total_matches,
+        winRate: parseFloat(winRate),
+        totalEarnings: player.total_earnings_usdc,
+        bestWinStreak: player.best_win_streak || 0,
+      };
+    });
+
+    res.json({ leaderboard, period: timeFilter });
+  });
+
+  // Set player username (requires authentication and completed match)
+  expressApp.post('/api/player/username', (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const session = db.getSessionByToken(token);
+    if (!session) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    const user = db.getUserById(session.user_id);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    const result = db.setPlayerUsername(user.wallet_address, username);
+    if (result.success) {
+      res.json({ success: true, username: username.trim() });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  });
+
+  // Set player profile photo (requires authentication and completed match)
+  expressApp.post('/api/player/photo', (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const session = db.getSessionByToken(token);
+    if (!session) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    const user = db.getUserById(session.user_id);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const { photo } = req.body;
+    if (!photo) {
+      return res.status(400).json({ error: 'Photo data is required' });
+    }
+
+    const result = db.setPlayerPhoto(user.wallet_address, photo);
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: result.error });
+    }
+  });
 }
 
 // Apply shared routes to both servers
@@ -319,6 +480,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
     let authenticated = false;
     let currentLobbyId = null;
     let currentMatchId = null;
+    let currentSessionToken = null; // Track for token rotation on reconnect
     let pingInterval = null;
     let lastPingTime = null;
 
@@ -444,6 +606,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
 
       userId = authResult.user.id;
       authenticated = true;
+      currentSessionToken = sessionToken; // Store for token rotation on reconnect
 
       // Send welcome
       ws.send(protocol.createWelcome(userId, Date.now()));
@@ -472,16 +635,22 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
           lobbyData.deposit_address
         ));
 
-        // Check if in active match
+        // Check if in active match - use reconnect handler
         if (lobbyData.current_match_id) {
           currentMatchId = lobbyData.current_match_id;
-          const activeMatch = match.getMatch(currentMatchId);
-          if (activeMatch) {
-            activeMatch.connections.set(userId, ws);
-            const player = activeMatch.players.find(p => p.id === userId);
-            if (player) {
-              player.connected = true;
-            }
+
+          // HIGH-2 FIX: Immediately clear grace period to prevent race with tick
+          // This prevents elimination if reconnect arrives just as grace period expires
+          match.clearGracePeriod(currentMatchId, userId);
+
+          const reconnectedMatch = match.handleReconnect(currentMatchId, userId, ws, currentSessionToken);
+
+          if (reconnectedMatch) {
+            console.log(`[RECONNECT] User ${userId} reconnected to match ${currentMatchId}`);
+          } else {
+            // Match may have ended or player eliminated
+            console.log(`[RECONNECT] User ${userId} could not reconnect to match ${currentMatchId}`);
+            currentMatchId = null;
           }
         }
       }

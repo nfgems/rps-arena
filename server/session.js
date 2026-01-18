@@ -44,6 +44,30 @@ function invalidateSession(token) {
 }
 
 /**
+ * Rotate session token (invalidates old token, issues new one)
+ * Use this on sensitive operations like reconnection to prevent replay attacks
+ * @param {string} oldToken - Current session token
+ * @returns {{token: string, userId: string}|null} New token and user ID, or null if invalid
+ */
+function rotateToken(oldToken) {
+  const session = db.getSessionByToken(oldToken);
+  if (!session) return null;
+
+  const newToken = generateToken();
+  const result = db.updateSessionToken(session.id, newToken);
+
+  if (!result || result.changes === 0) {
+    return null;
+  }
+
+  return {
+    token: newToken,
+    userId: session.user_id,
+    walletAddress: session.wallet_address,
+  };
+}
+
+/**
  * Clean up expired sessions (run periodically)
  */
 function cleanupExpiredSessions() {
@@ -62,4 +86,5 @@ module.exports = {
   validateSession,
   invalidateSession,
   cleanupExpiredSessions,
+  rotateToken,
 };

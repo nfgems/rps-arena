@@ -9,6 +9,7 @@ const protocol = require('./protocol');
 const logger = require('./logger');
 const payments = require('./payments');
 const lobby = require('./lobby');
+const session = require('./session');
 const { sendAlert, AlertType } = require('./alerts');
 const config = require('./config');
 
@@ -29,6 +30,9 @@ const HEALTH_CHECK_INTERVAL = 2000; // 2 seconds (reduced from 5s for faster sta
 
 // Maximum time since last tick before considering game loop stalled (ms)
 const MAX_TICK_STALENESS = 2000; // 2 seconds (60 ticks at 30Hz)
+
+// Reconnection grace period (seconds) - how long a disconnected player can reconnect before elimination
+const RECONNECT_GRACE_PERIOD = parseInt(process.env.RECONNECT_GRACE_PERIOD || '30', 10);
 
 // ============================================
 // State Persistence (Crash Recovery)
@@ -68,6 +72,7 @@ function persistMatchState(match) {
       alive: p.alive,
       frozen: p.frozen,
       connected: p.connected,
+      disconnectedAt: p.disconnectedAt || null, // HIGH-1: Persist grace period timestamp
       lastInputSequence: p.lastInputSequence,
     })),
   };
@@ -498,7 +503,7 @@ function startGameLoop(match) {
 
 /**
  * Process a single game tick
- * Order: disconnects → inputs → movement → collisions → win check → broadcast
+ * Order: grace period check → movement → collisions → win check → broadcast
  */
 function processTick(match) {
   match.tick++;
@@ -508,21 +513,17 @@ function processTick(match) {
     persistMatchState(match);
   }
 
-  const alivePlayers = match.players.filter(p => p.alive);
-
-  // 1. Process disconnects
-  for (const player of alivePlayers) {
-    if (!player.connected) {
-      player.alive = false;
-      logger.logDisconnect(match.id, match.tick, player.id, 'disconnected');
-
-      // Send elimination for disconnect
-      const elimMsg = protocol.createElimination(match.tick, player.id, null);
-      broadcastToMatch(match, elimMsg);
-    }
+  // 1. Check grace period expirations (replaces immediate disconnect elimination)
+  const shouldEnd = checkGracePeriodExpirations(match);
+  if (shouldEnd) {
+    const stillAlive = match.players.filter(p => p.alive);
+    endMatch(match, stillAlive[0] || null, 'last_standing').catch(err => {
+      console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
+    });
+    return;
   }
 
-  // Recheck alive after disconnects
+  // Recheck alive after grace period eliminations
   const stillAlive = match.players.filter(p => p.alive);
 
   // 2. Check win condition after disconnects
@@ -701,6 +702,14 @@ async function endMatch(match, winner, reason) {
       match.status = 'finished';
       db.setMatchWinner(match.id, winner.id, 2.4, payoutResult.txHash);
 
+      // Record stats for all players (by wallet address)
+      const buyInUsdc = config.BUY_IN_AMOUNT / 1_000_000; // Convert from raw to USDC
+      for (const player of match.players) {
+        const isWin = player.id === winner.id;
+        const earnings = isWin ? 2.4 : 0;
+        db.recordMatchResult(player.walletAddress, isWin, earnings, buyInUsdc);
+      }
+
       // Send activity alert for successful match completion
       sendAlert(AlertType.MATCH_COMPLETED, {
         lobbyId: match.lobbyId,
@@ -871,34 +880,173 @@ function processInput(matchId, userId, input) {
 
 /**
  * Handle player disconnect during match
+ * Starts a grace period before auto-elimination
  */
 function handleDisconnect(matchId, userId) {
   const match = activeMatches.get(matchId);
   if (!match) return;
 
   const player = match.players.find(p => p.id === userId);
-  if (player) {
-    player.connected = false;
-    match.connections.delete(userId);
-  }
+  if (!player || !player.alive) return;
+
+  player.connected = false;
+  player.disconnectedAt = Date.now();
+  match.connections.delete(userId);
+
+  console.log(`[RECONNECT] Player ${userId} disconnected from match ${matchId}, grace period: ${RECONNECT_GRACE_PERIOD}s`);
+
+  // Notify other players of disconnect (with grace period info)
+  const disconnectMsg = protocol.createPlayerDisconnect(userId, RECONNECT_GRACE_PERIOD);
+  broadcastToMatch(match, disconnectMsg);
+
+  // Log the disconnect event
+  logger.logDisconnect(match.id, match.tick, userId, 'disconnected');
 
   // Check for mass disconnect
-  const connectedCount = match.players.filter(p => p.connected).length;
+  const connectedCount = match.players.filter(p => p.connected && p.alive).length;
   const aliveCount = match.players.filter(p => p.alive).length;
 
   if (connectedCount === 0 && aliveCount > 1) {
-    // All players disconnected simultaneously
-    voidMatch(matchId, 'triple_disconnect').catch(err => {
-      console.error(`[DISCONNECT] Failed to void match ${matchId}:`, err);
-    });
-  } else if (aliveCount === 2) {
-    // Check if last 2 players disconnected
-    const aliveAndConnected = match.players.filter(p => p.alive && p.connected);
-    if (aliveAndConnected.length === 0) {
-      voidMatch(matchId, 'double_disconnect').catch(err => {
-        console.error(`[DISCONNECT] Failed to void match ${matchId}:`, err);
-      });
+    // All alive players disconnected simultaneously - start grace period for all
+    // Don't void immediately, give them a chance to reconnect
+    console.log(`[RECONNECT] All ${aliveCount} players disconnected, starting grace period`);
+  }
+}
+
+/**
+ * Handle player reconnection during match
+ * Returns the match if reconnection successful, null otherwise
+ * @param {string} matchId - Match ID
+ * @param {string} userId - User ID
+ * @param {WebSocket} ws - WebSocket connection
+ * @param {string} sessionToken - Current session token (will be rotated for security)
+ */
+function handleReconnect(matchId, userId, ws, sessionToken) {
+  const match = activeMatches.get(matchId);
+  if (!match) {
+    console.log(`[RECONNECT] Match ${matchId} not found for reconnection`);
+    return null;
+  }
+
+  const player = match.players.find(p => p.id === userId);
+  if (!player) {
+    console.log(`[RECONNECT] Player ${userId} not in match ${matchId}`);
+    return null;
+  }
+
+  if (!player.alive) {
+    console.log(`[RECONNECT] Player ${userId} already eliminated, cannot reconnect`);
+    return null;
+  }
+
+  // Close any existing connection for this player (prevents duplicate connection attacks)
+  const oldWs = match.connections.get(userId);
+  if (oldWs && oldWs !== ws && oldWs.readyState === 1) {
+    oldWs.close(1008, 'Duplicate reconnect');
+  }
+
+  // Reconnect the player
+  player.connected = true;
+  player.disconnectedAt = null;
+  match.connections.set(userId, ws);
+
+  // Set matchId on the connection
+  if (ws.setMatchId) {
+    ws.setMatchId(matchId);
+  }
+
+  console.log(`[RECONNECT] Player ${userId} reconnected to match ${matchId}`);
+
+  // Rotate session token to prevent replay attacks (CRITICAL-2 fix)
+  if (sessionToken) {
+    const rotated = session.rotateToken(sessionToken);
+    if (rotated) {
+      // Send new token to client
+      const tokenMsg = protocol.createTokenUpdate(rotated.token);
+      ws.send(tokenMsg);
+      console.log(`[RECONNECT] Token rotated for player ${userId}`);
     }
+  }
+
+  // Send reconnect state to the player (full game state)
+  const reconnectMsg = protocol.createReconnectState(
+    match.id,
+    player.role,
+    match.tick,
+    match.players,
+    null // No time limit for now
+  );
+  ws.send(reconnectMsg);
+
+  // Notify other players of reconnection
+  const reconnectNotify = protocol.createPlayerReconnect(userId);
+  broadcastToMatch(match, reconnectNotify);
+
+  return match;
+}
+
+/**
+ * Check for players who exceeded grace period and eliminate them
+ * Called from the game tick
+ */
+function checkGracePeriodExpirations(match) {
+  const now = Date.now();
+  const gracePeriodMs = RECONNECT_GRACE_PERIOD * 1000;
+
+  for (const player of match.players) {
+    if (!player.connected && player.alive && player.disconnectedAt) {
+      const elapsed = now - player.disconnectedAt;
+
+      if (elapsed >= gracePeriodMs) {
+        // Grace period expired - eliminate player
+        player.alive = false;
+        player.disconnectedAt = null;
+
+        console.log(`[RECONNECT] Player ${player.id} grace period expired, eliminated`);
+        logger.logDisconnect(match.id, match.tick, player.id, 'grace_period_expired');
+
+        // Broadcast elimination
+        const eliminationMsg = protocol.createElimination(match.tick, player.id, null);
+        broadcastToMatch(match, eliminationMsg);
+
+        // Check if match should end
+        const aliveCount = match.players.filter(p => p.alive).length;
+        if (aliveCount <= 1) {
+          return true; // Signal that match should end
+        }
+      }
+    }
+  }
+
+  return false; // Match continues
+}
+
+/**
+ * Get remaining grace time for a disconnected player
+ */
+function getGraceTimeRemaining(player) {
+  if (!player.disconnectedAt || player.connected || !player.alive) {
+    return 0;
+  }
+  const elapsed = Date.now() - player.disconnectedAt;
+  const remaining = Math.max(0, (RECONNECT_GRACE_PERIOD * 1000) - elapsed);
+  return Math.ceil(remaining / 1000);
+}
+
+/**
+ * Clear grace period for a player (called immediately on reconnect message receipt)
+ * This prevents race condition between reconnect and grace period expiry check
+ * HIGH-2 FIX: Must be called BEFORE handleReconnect to prevent elimination during reconnection
+ * @param {string} matchId - Match ID
+ * @param {string} userId - User ID
+ */
+function clearGracePeriod(matchId, userId) {
+  const match = activeMatches.get(matchId);
+  if (!match) return;
+
+  const player = match.players.find(p => p.id === userId);
+  if (player && player.alive) {
+    player.disconnectedAt = null; // Clear immediately to stop grace period timer
   }
 }
 
@@ -1043,6 +1191,8 @@ module.exports = {
   voidMatch,
   processInput,
   handleDisconnect,
+  handleReconnect,
+  clearGracePeriod,
   getPlayerMatch,
   getMatch,
   broadcastToMatch,
@@ -1052,4 +1202,6 @@ module.exports = {
   getHealthStatus,
   // Crash recovery
   recoverInterruptedMatches,
+  // Reconnection config
+  RECONNECT_GRACE_PERIOD,
 };
