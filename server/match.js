@@ -10,6 +10,7 @@ const logger = require('./logger');
 const payments = require('./payments');
 const lobby = require('./lobby');
 const { sendAlert, AlertType } = require('./alerts');
+const config = require('./config');
 
 // Debug mode - set to true for verbose logging during development
 const DEBUG_MATCH = process.env.DEBUG_MATCH === 'true' || false;
@@ -222,8 +223,8 @@ async function startMatch(lobbyId) {
       throw err;
     }
 
-    // Generate RNG seed
-    const rngSeed = Date.now();
+    // Generate cryptographically secure RNG seed
+    const rngSeed = config.generateSecureRngSeed();
 
     // Create match in database
     const matchData = db.createMatch(lobbyId, rngSeed);
@@ -265,7 +266,7 @@ async function startMatch(lobbyId) {
       tick: 0,
       players: matchPlayers,
       connections: new Map(lobbyData.connections), // Copy connections from lobby
-      countdownRemaining: 3,
+      countdownRemaining: config.COUNTDOWN_DURATION,
       gameLoopInterval: null,
       snapshotCounter: 0,
     };
@@ -600,7 +601,7 @@ function processTick(match) {
   // 5. Check win condition after collisions
   const finalAlive = match.players.filter(p => p.alive);
   if (finalAlive.length <= 1) {
-    console.log(`[DEBUG] Match ending - winner: ${finalAlive[0]?.id || 'none'}, reason: last_standing`);
+    if (DEBUG_MATCH) console.log(`[DEBUG] Match ending - winner: ${finalAlive[0]?.id || 'none'}, reason: last_standing`);
     endMatch(match, finalAlive[0] || null, 'last_standing').catch(err => {
       console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
     });
@@ -827,7 +828,7 @@ let inputLogCount = 0;
 function processInput(matchId, userId, input) {
   const match = activeMatches.get(matchId);
   if (!match || match.status !== 'running') {
-    if (inputLogCount < 5) {
+    if (DEBUG_MATCH && inputLogCount < 5) {
       console.log('[DEBUG] Input rejected - match status:', match ? match.status : 'no match');
       inputLogCount++;
     }
@@ -836,7 +837,7 @@ function processInput(matchId, userId, input) {
 
   const player = match.players.find(p => p.id === userId);
   if (!player || !player.alive) {
-    if (inputLogCount < 5) {
+    if (DEBUG_MATCH && inputLogCount < 5) {
       console.log('[DEBUG] Input rejected - player:', player ? 'dead' : 'not found');
       inputLogCount++;
     }
@@ -854,7 +855,7 @@ function processInput(matchId, userId, input) {
   const targetY = Math.max(0, Math.min(physics.ARENA_HEIGHT, input.targetY));
 
   // Debug first few accepted inputs
-  if (inputLogCount < 10) {
+  if (DEBUG_MATCH && inputLogCount < 10) {
     console.log('[DEBUG] Input accepted - seq:', input.sequence, 'target:', targetX.toFixed(1), targetY.toFixed(1), 'player pos:', player.x.toFixed(1), player.y.toFixed(1));
     inputLogCount++;
   }

@@ -21,6 +21,7 @@ const match = require('./match');
 const payments = require('./payments');
 const bot = require('./bot');
 const { sendAlert, AlertType } = require('./alerts');
+const config = require('./config');
 
 // ============================================
 // Server Setup - Dual Port Architecture
@@ -229,8 +230,7 @@ const rateLimits = new Map(); // IP -> { inputCount, otherCount, lastReset }
 const connectionCounts = new Map(); // IP -> count
 
 // Cleanup stale rate limit entries every hour to prevent memory leak
-const RATE_LIMIT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-const RATE_LIMIT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+const { RATE_LIMIT_CLEANUP_INTERVAL_MS, RATE_LIMIT_MAX_AGE_MS } = config;
 
 setInterval(() => {
   const now = Date.now();
@@ -272,16 +272,16 @@ function checkRateLimit(ip, messageType) {
 
   if (messageType === 'INPUT') {
     limits.inputCount++;
-    return limits.inputCount <= 120; // 120 INPUT/sec (headroom for 60 Hz client)
+    return limits.inputCount <= config.RATE_LIMIT_INPUT_PER_SEC;
   } else {
     limits.otherCount++;
-    return limits.otherCount <= 10; // 10 other/sec
+    return limits.otherCount <= config.RATE_LIMIT_OTHER_PER_SEC;
   }
 }
 
 function checkConnectionLimit(ip) {
   const count = connectionCounts.get(ip) || 0;
-  return count < 3; // Max 3 connections per IP
+  return count < config.MAX_CONNECTIONS_PER_IP;
 }
 
 function incrementConnection(ip) {

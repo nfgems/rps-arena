@@ -6,6 +6,7 @@
 const { ethers } = require('ethers');
 const wallet = require('./wallet');
 const { sendAlert, AlertType } = require('./alerts');
+const config = require('./config');
 
 // USDC Contract ABI (minimal for transfers)
 const USDC_ABI = [
@@ -15,11 +16,11 @@ const USDC_ABI = [
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 ];
 
-// Constants
+// Constants from config
 const USDC_DECIMALS = 6;
-const BUY_IN_AMOUNT = 1_000_000; // 1 USDC
-const WINNER_PAYOUT = 2_400_000; // 2.4 USDC
-const TREASURY_CUT = 600_000; // 0.6 USDC
+const BUY_IN_AMOUNT = config.BUY_IN_AMOUNT;
+const WINNER_PAYOUT = config.WINNER_PAYOUT;
+const TREASURY_CUT = config.TREASURY_CUT;
 
 // Payment security constants
 const MIN_CONFIRMATIONS = 3; // Minimum block confirmations required

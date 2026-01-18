@@ -186,18 +186,18 @@ This approach is MORE secure than removal because:
 *Remove debug code and prepare for production deployment*
 
 ### 3.1 Debug Logging Removal
-- [ ] **Remove debug logs from `physics.js`** (~12 console.log statements)
-- [ ] **Remove debug logs from `match.js`** (~13 console.log statements)
-- [ ] **Remove debug logs from `client/src/ui.js`** (~10 console.log statements)
-- [ ] **Remove `[DEBUG]`, `[FINAL2]`, `[COLLISION]` prefixed logs**
-- [ ] **Implement proper logging system** (Winston or similar)
-- [ ] **Add log levels** (error, warn, info, debug) with environment control
+- [x] **Remove debug logs from `physics.js`** (~12 console.log statements) - ✅ Already gated behind DEBUG_PHYSICS env var (audit fix M12)
+- [x] **Remove debug logs from `match.js`** (~13 console.log statements) - ✅ All gated behind DEBUG_MATCH env var (audit fix L7 + 4 additional)
+- [x] **Remove debug logs from `client/src/ui.js`** (~10 console.log statements) - ✅ Removed 6 debug logs (lines 302, 326, 334, 347, 356, 592-596)
+- [x] **Remove `[DEBUG]`, `[FINAL2]`, `[COLLISION]` prefixed logs** - ✅ Server logs gated behind DEBUG_* env vars; Client logs removed from input.js (9) and interpolation.js (1)
+- [x] **Implement proper logging system** (Winston or similar) - ✅ Created server/appLogger.js with Winston, category loggers, file rotation
+- [x] **Add log levels** (error, warn, info, debug) with environment control - ✅ LOG_LEVEL env var, defaults to 'info' in production, 'debug' in development
 
 ### 3.2 Hardcoded Values
-- [ ] **Move payout amounts to config** - Buy-in, winner payout, treasury cut
-- [ ] **Move rate limits to config** - INPUT/sec, OTHER/sec, max connections
-- [ ] **Move countdown duration to config** - Currently hardcoded 3 seconds
-- [ ] **Replace `Date.now()` RNG seed** with cryptographic random
+- [x] **Move payout amounts to config** - Buy-in, winner payout, treasury cut - ✅ Created server/config.js with env var overrides (BUY_IN_AMOUNT, WINNER_PAYOUT, TREASURY_CUT)
+- [x] **Move rate limits to config** - INPUT/sec, OTHER/sec, max connections - ✅ RATE_LIMIT_INPUT, RATE_LIMIT_OTHER, MAX_CONNECTIONS_PER_IP env vars
+- [x] **Move countdown duration to config** - Currently hardcoded 3 seconds - ✅ COUNTDOWN_DURATION env var
+- [x] **Replace `Date.now()` RNG seed** with cryptographic random - ✅ Using crypto.randomInt() in config.generateSecureRngSeed()
 
 ### 3.3 Code Quality
 - [ ] **Remove circular dependencies** between `match.js` and `lobby.js`

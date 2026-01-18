@@ -26,8 +26,6 @@ const Input = (function () {
   function init(canvasElement) {
     canvas = canvasElement;
 
-    console.log('[DEBUG] Input.init - before listeners, targetX:', targetX, 'targetY:', targetY, 'enabled:', enabled);
-
     // Mouse move handler - use document to catch all mouse movement
     // This fixes the issue where canvas doesn't receive events until focused
     document.addEventListener('mousemove', handleMouseMove);
@@ -40,9 +38,6 @@ const Input = (function () {
 
     // Mouse enter handler
     canvas.addEventListener('mouseenter', handleMouseEnter);
-
-    console.log('[DEBUG] Input.init - after listeners, targetX:', targetX, 'targetY:', targetY);
-    console.log('Input initialized');
   }
 
   /**
@@ -75,7 +70,6 @@ const Input = (function () {
 
       // Mouse has moved, mark that we've received real input
       if (!hasReceivedMouseMove) {
-        console.log('[DEBUG] First real mouse movement detected');
         hasReceivedMouseMove = true;
       }
     }
@@ -86,7 +80,6 @@ const Input = (function () {
 
     // If this is the very first mousemove event after enable, just record position, don't update target
     if (!hasReceivedMouseMove) {
-      console.log('[DEBUG] Recording initial mouse position, not updating target yet');
       return;
     }
 
@@ -99,11 +92,6 @@ const Input = (function () {
 
     const newX = Math.max(0, Math.min(ARENA_WIDTH, canvasX * scaleX));
     const newY = Math.max(0, Math.min(ARENA_HEIGHT, canvasY * scaleY));
-
-    // Log first few mouse moves
-    if (Math.abs(newX - targetX) > 50 || Math.abs(newY - targetY) > 50) {
-      console.log('[DEBUG] Mouse move - new target:', newX, newY, 'rect:', rect.width, rect.height);
-    }
 
     targetX = newX;
     targetY = newY;
@@ -136,21 +124,10 @@ const Input = (function () {
 
     enabled = true;
 
-    console.log('[DEBUG] startSending called, initial target:', targetX, targetY);
-
-    // Log first few inputs
-    let inputCount = 0;
-
     // Send inputs at 60 Hz
     sendInterval = setInterval(() => {
-      if (inputCount < 5) {
-        console.log('[DEBUG] Sending input #' + inputCount + ':', targetX, targetY);
-        inputCount++;
-      }
       Network.sendInput(targetX, targetY, false);
     }, 1000 / SEND_RATE);
-
-    console.log('Input sending started');
   }
 
   /**
@@ -163,8 +140,6 @@ const Input = (function () {
       clearInterval(sendInterval);
       sendInterval = null;
     }
-
-    console.log('Input sending stopped');
   }
 
   /**
@@ -178,10 +153,8 @@ const Input = (function () {
    * Set initial position
    */
   function setPosition(x, y) {
-    console.log('[DEBUG] Input.setPosition called with:', x, y);
     targetX = x;
     targetY = y;
-    console.log('[DEBUG] Input.setPosition result - targetX:', targetX, 'targetY:', targetY);
   }
 
   /**

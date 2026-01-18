@@ -148,9 +148,6 @@ const Interpolation = (function () {
     return { x: curr.x, y: curr.y };
   }
 
-  // Debug counter
-  let getPlayersCount = 0;
-
   /**
    * Get all players with interpolated positions
    */
@@ -160,14 +157,6 @@ const Interpolation = (function () {
     const result = currentSnapshot.players.map(player => {
       const pos = getPosition(player.id);
       const isLocal = player.id === localPlayerId;
-
-      // Debug local player position
-      if (isLocal && getPlayersCount < 10) {
-        console.log('[DEBUG] getPlayers - local player pos:', pos ? pos.x.toFixed(1) + ',' + pos.y.toFixed(1) : 'null',
-                    'snapshot pos:', player.x.toFixed(1) + ',' + player.y.toFixed(1),
-                    'localPlayerPosition:', localPlayerPosition.x.toFixed(1) + ',' + localPlayerPosition.y.toFixed(1));
-        getPlayersCount++;
-      }
 
       return {
         id: player.id,

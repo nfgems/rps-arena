@@ -299,7 +299,6 @@ const UI = (function () {
 
     // Store spawn position for when game actually starts
     spawnPosition = { x: data.spawnX, y: data.spawnY };
-    console.log('[DEBUG] Role assignment - spawn position:', spawnPosition);
 
     // Show role
     const roleDisplay = document.getElementById('role-display');
@@ -323,7 +322,6 @@ const UI = (function () {
 
         // Set input target to spawn position IMMEDIATELY
         // This uses the position received from ROLE_ASSIGNMENT before snapshots arrive
-        console.log('[DEBUG] Game start - setting input to spawn:', spawnPosition);
         Input.setPosition(spawnPosition.x, spawnPosition.y);
 
         // Set local player for interpolation WITH spawn position
@@ -331,7 +329,6 @@ const UI = (function () {
         Interpolation.setLocalPlayer(Network.getUserId(), spawnPosition.x, spawnPosition.y);
 
         Input.startSending();
-        console.log('[DEBUG] Input started, current target:', Input.getTarget());
 
         // Start render loop
         startGameLoop();
@@ -344,8 +341,6 @@ const UI = (function () {
   }
 
   function handleElimination(data) {
-    console.log('Elimination:', data);
-
     // Check if we were eliminated
     if (data.eliminatedId === Network.getUserId()) {
       Input.stopSending();
@@ -353,7 +348,7 @@ const UI = (function () {
   }
 
   function handleBounce(data) {
-    console.log('Bounce:', data);
+    // Bounce events received - could add visual effects here
   }
 
   function handleMatchEnd(data) {
@@ -579,7 +574,6 @@ const UI = (function () {
     if (gameLoopId) return; // Prevent multiple game loops
 
     const gameState = { effects: [] };
-    let loopCount = 0;
 
     function loop() {
       // Update local player position based on input
@@ -587,13 +581,6 @@ const UI = (function () {
 
       // Simple client-side prediction (move toward target)
       const currentPos = Interpolation.getPosition(Network.getUserId());
-
-      // Debug first few loops
-      if (loopCount < 5) {
-        console.log('[DEBUG] Game loop #' + loopCount + ' - target:', target.x.toFixed(1), target.y.toFixed(1),
-                    'currentPos:', currentPos ? currentPos.x.toFixed(1) + ',' + currentPos.y.toFixed(1) : 'null');
-        loopCount++;
-      }
 
       if (currentPos) {
         // For responsive feel, move directly toward mouse cursor
