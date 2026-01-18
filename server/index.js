@@ -475,6 +475,10 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
             console.error('Failed to start match:', error);
             // If lobby balance is insufficient, void the lobby and refund players
             if (error.message === 'INSUFFICIENT_LOBBY_BALANCE') {
+              sendAlert(AlertType.INSUFFICIENT_BALANCE, {
+                lobbyId,
+                balance: error.balance || 'unknown',
+              });
               await lobby.processTreasuryRefund(lobbyId, 'insufficient_lobby_balance');
               broadcastLobbyList();
             }

@@ -210,7 +210,9 @@ async function startMatch(lobbyId) {
   const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
   if (BigInt(lobbyBalance.balance) < BigInt(payments.WINNER_PAYOUT)) {
     console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${payments.WINNER_PAYOUT / 1_000_000} USDC for payout)`);
-    throw new Error('INSUFFICIENT_LOBBY_BALANCE');
+    const err = new Error('INSUFFICIENT_LOBBY_BALANCE');
+    err.balance = lobbyBalance.formatted;
+    throw err;
   }
 
   // Generate RNG seed

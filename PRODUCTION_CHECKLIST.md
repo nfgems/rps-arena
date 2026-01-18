@@ -153,14 +153,32 @@ This approach is MORE secure than removal because:
 - [x] **Low ETH balance alerts** - Warns when lobby/treasury wallet low on gas
 - [x] **RPC error alerts** - Blockchain connection issues after all retries exhausted
 - [x] **Database error alerts** - Database operation failures (except expected constraint errors)
+- [x] **Insufficient balance alerts** - Notifies when lobby wallet lacks funds for payout
+- [x] **Match recovered alerts** - Notifies when interrupted match is voided/refunded on startup
 
 **Setup:**
 - `DISCORD_WEBHOOK_URL` - Critical alerts channel
 - `DISCORD_ACTIVITY_WEBHOOK_URL` - Activity logs channel
 
 **Alert types:**
-- Critical (alerts channel): SERVER_START, SERVER_SHUTDOWN, PAYOUT_FAILED, REFUND_FAILED, LOBBY_STUCK, LOW_ETH_LOBBY, LOW_ETH_TREASURY, RPC_ERROR, DATABASE_ERROR, INSUFFICIENT_BALANCE
+- Critical (alerts channel): SERVER_START, SERVER_SHUTDOWN, PAYOUT_FAILED, REFUND_FAILED, LOBBY_STUCK, LOW_ETH_LOBBY, LOW_ETH_TREASURY, RPC_ERROR, DATABASE_ERROR, INSUFFICIENT_BALANCE, MATCH_RECOVERED
 - Activity (activity channel): MATCH_STARTED, MATCH_COMPLETED, PLAYER_JOINED
+
+**Implementation locations:**
+- `alerts.js`: Alert module with `sendAlert()` and `AlertType` enum
+- `index.js:611,617`: SERVER_START, SERVER_SHUTDOWN
+- `index.js:478`: INSUFFICIENT_BALANCE
+- `match.js:129`: MATCH_RECOVERED
+- `match.js:276`: MATCH_STARTED
+- `match.js:462,937`: DATABASE_ERROR (tick persistence failures)
+- `match.js:684`: MATCH_COMPLETED
+- `match.js:708`: PAYOUT_FAILED
+- `lobby.js:237`: PLAYER_JOINED
+- `lobby.js:333,385`: REFUND_FAILED
+- `lobby.js:533`: LOBBY_STUCK
+- `payments.js:171`: RPC_ERROR
+- `payments.js:635,641`: LOW_ETH_LOBBY, LOW_ETH_TREASURY
+- `database.js:219,317`: DATABASE_ERROR
 
 ---
 
