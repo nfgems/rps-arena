@@ -23,6 +23,8 @@ const Network = (function () {
 
   /**
    * Connect to WebSocket server
+   * @param {string} token - Session token for authentication
+   * @returns {Promise<{userId: string, serverTime: number}>} User ID and server time on success
    */
   function connect(token) {
     return new Promise((resolve, reject) => {
@@ -130,6 +132,7 @@ const Network = (function () {
 
   /**
    * Send a message to the server
+   * @param {Object} message - Message object with type and data
    */
   function send(message) {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -138,7 +141,8 @@ const Network = (function () {
   }
 
   /**
-   * Handle incoming message
+   * Handle incoming message from server
+   * @param {{type: string}} message - Server message with type property
    */
   function handleMessage(message) {
     const type = message.type;
@@ -153,14 +157,17 @@ const Network = (function () {
   }
 
   /**
-   * Register a message handler
+   * Register a message handler for a specific message type
+   * @param {string} type - Message type to handle
+   * @param {Function} handler - Handler function receiving the message
    */
   function on(type, handler) {
     handlers.set(type, handler);
   }
 
   /**
-   * Remove a message handler
+   * Remove a message handler for a specific message type
+   * @param {string} type - Message type to remove handler for
    */
   function off(type) {
     handlers.delete(type);
@@ -171,11 +178,21 @@ const Network = (function () {
    */
   const eventListeners = new Map();
 
+  /**
+   * Emit an event to all registered listeners
+   * @param {string} event - Event name
+   * @param {any} data - Event data
+   */
   function emit(event, data) {
     const listeners = eventListeners.get(event) || [];
     listeners.forEach(listener => listener(data));
   }
 
+  /**
+   * Add an event listener
+   * @param {string} event - Event name
+   * @param {Function} listener - Listener function
+   */
   function addEventListener(event, listener) {
     if (!eventListeners.has(event)) {
       eventListeners.set(event, []);
@@ -183,6 +200,11 @@ const Network = (function () {
     eventListeners.get(event).push(listener);
   }
 
+  /**
+   * Remove an event listener
+   * @param {string} event - Event name
+   * @param {Function} listener - Listener function to remove
+   */
   function removeEventListener(event, listener) {
     const listeners = eventListeners.get(event);
     if (listeners) {
@@ -219,7 +241,9 @@ const Network = (function () {
   });
 
   /**
-   * Game-specific sends
+   * Send request to join a lobby
+   * @param {number} lobbyId - Lobby ID to join
+   * @param {string} paymentTxHash - Payment transaction hash
    */
   function joinLobby(lobbyId, paymentTxHash) {
     send({
@@ -229,6 +253,10 @@ const Network = (function () {
     });
   }
 
+  /**
+   * Request a refund for a lobby that timed out
+   * @param {number} lobbyId - Lobby ID to request refund from
+   */
   function requestRefund(lobbyId) {
     send({
       type: 'REQUEST_REFUND',
@@ -238,6 +266,12 @@ const Network = (function () {
 
   let inputSequence = 0;
 
+  /**
+   * Send player input to server
+   * @param {number} targetX - Target X position
+   * @param {number} targetY - Target Y position
+   * @param {boolean} [frozen=false] - Whether player is frozen (not moving)
+   */
   function sendInput(targetX, targetY, frozen = false) {
     inputSequence++;
     send({
@@ -250,16 +284,25 @@ const Network = (function () {
   }
 
   /**
-   * Getters
+   * Check if connected to server
+   * @returns {boolean} True if connected
    */
   function isConnected() {
     return connected;
   }
 
+  /**
+   * Get the current user's ID
+   * @returns {string|null} User ID or null if not authenticated
+   */
   function getUserId() {
     return userId;
   }
 
+  /**
+   * Get current ping latency in milliseconds
+   * @returns {number} Ping in ms
+   */
   function getPing() {
     return currentPing;
   }

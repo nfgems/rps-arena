@@ -22,7 +22,10 @@ const Interpolation = (function () {
   let onPositionInitializedCallback = null;
 
   /**
-   * Set the local player ID for special handling
+   * Set the local player ID for special handling (client-side prediction)
+   * @param {string} playerId - Local player's user ID
+   * @param {number} [initialX] - Initial X position (optional)
+   * @param {number} [initialY] - Initial Y position (optional)
    */
   function setLocalPlayer(playerId, initialX, initialY) {
     localPlayerId = playerId;
@@ -38,13 +41,15 @@ const Interpolation = (function () {
 
   /**
    * Set callback for when local position is first initialized from server
+   * @param {Function} callback - Callback function receiving (x, y) position
    */
   function onPositionInitialized(callback) {
     onPositionInitializedCallback = callback;
   }
 
   /**
-   * Process incoming snapshot
+   * Process incoming snapshot from server
+   * @param {{tick: number, players: Array<{id: string, x: number, y: number, role: string, alive: boolean}>}} snapshot - Server snapshot
    */
   function onSnapshot(snapshot) {
     previousSnapshot = currentSnapshot;
@@ -89,6 +94,8 @@ const Interpolation = (function () {
 
   /**
    * Update local player position (client-side prediction)
+   * @param {number} x - New X position
+   * @param {number} y - New Y position
    */
   function updateLocalPosition(x, y) {
     localPlayerPosition.x = x;
@@ -97,6 +104,8 @@ const Interpolation = (function () {
 
   /**
    * Get interpolated position for a player
+   * @param {string} playerId - Player's user ID
+   * @returns {{x: number, y: number}|null} Position or null if player not found
    */
   function getPosition(playerId) {
     // For local player, use predicted position if initialized
@@ -150,6 +159,7 @@ const Interpolation = (function () {
 
   /**
    * Get all players with interpolated positions
+   * @returns {Array<{id: string, role: string, alive: boolean, x: number, y: number, isLocal: boolean}>}
    */
   function getPlayers() {
     if (!currentSnapshot) return [];
@@ -172,7 +182,8 @@ const Interpolation = (function () {
   }
 
   /**
-   * Get current snapshot tick
+   * Get current snapshot tick number
+   * @returns {number} Current tick or 0 if no snapshot received
    */
   function getCurrentTick() {
     return currentSnapshot ? currentSnapshot.tick : 0;

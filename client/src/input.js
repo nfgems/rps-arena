@@ -21,7 +21,8 @@ const Input = (function () {
   const MOUSE_MOVE_THRESHOLD = 5; // Minimum pixels mouse must move to register
 
   /**
-   * Initialize input handling
+   * Initialize input handling for a canvas element
+   * @param {HTMLCanvasElement} canvasElement - Game canvas to track mouse on
    */
   function init(canvasElement) {
     canvas = canvasElement;
@@ -41,7 +42,8 @@ const Input = (function () {
   }
 
   /**
-   * Handle mouse movement
+   * Handle mouse movement events
+   * @param {MouseEvent} event - Mouse event
    */
   function handleMouseMove(event) {
     if (!enabled) return;
@@ -144,13 +146,16 @@ const Input = (function () {
 
   /**
    * Get current target position
+   * @returns {{x: number, y: number, frozen: boolean}} Target position and frozen state
    */
   function getTarget() {
     return { x: targetX, y: targetY, frozen: false };
   }
 
   /**
-   * Set initial position
+   * Set initial target position (for spawn position)
+   * @param {number} x - X position
+   * @param {number} y - Y position
    */
   function setPosition(x, y) {
     targetX = x;
@@ -158,7 +163,8 @@ const Input = (function () {
   }
 
   /**
-   * Check if enabled
+   * Check if input handling is enabled
+   * @returns {boolean} True if enabled
    */
   function isEnabled() {
     return enabled;

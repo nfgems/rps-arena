@@ -26,7 +26,8 @@ const Renderer = (function () {
   let animationFrame = 0;
 
   /**
-   * Initialize renderer
+   * Initialize renderer with a canvas element
+   * @param {HTMLCanvasElement} canvasElement - Canvas element to render to
    */
   function init(canvasElement) {
     canvas = canvasElement;
@@ -81,7 +82,8 @@ const Renderer = (function () {
   }
 
   /**
-   * Draw a player token
+   * Draw a player token on the canvas
+   * @param {{x: number, y: number, role: string, alive: boolean, isLocal: boolean}} player - Player data
    */
   function drawPlayer(player) {
     const { x, y, role, alive, isLocal } = player;
@@ -120,6 +122,8 @@ const Renderer = (function () {
 
   /**
    * Draw role-specific icon inside the player circle
+   * @param {string} role - Player role (rock, paper, scissors)
+   * @param {number} time - Animation time for effects
    */
   function drawRoleIcon(role, time) {
     ctx.fillStyle = '#FFFFFF';
@@ -141,6 +145,7 @@ const Renderer = (function () {
 
   /**
    * Draw rock icon (wobbling circle)
+   * @param {number} time - Animation time
    */
   function drawRock(time) {
     const wobble = Math.sin(time * 3) * 1;
@@ -164,6 +169,7 @@ const Renderer = (function () {
 
   /**
    * Draw paper icon (fluttering rectangle)
+   * @param {number} time - Animation time
    */
   function drawPaper(time) {
     const bob = Math.sin(time * 4) * 2;
@@ -191,6 +197,7 @@ const Renderer = (function () {
 
   /**
    * Draw scissors icon (snipping animation)
+   * @param {number} time - Animation time
    */
   function drawScissors(time) {
     const snip = Math.sin(time * 6) * 0.3;
@@ -233,7 +240,10 @@ const Renderer = (function () {
   }
 
   /**
-   * Draw elimination effect
+   * Draw elimination effect (expanding red circle)
+   * @param {number} x - X position
+   * @param {number} y - Y position
+   * @param {number} progress - Animation progress (0-1)
    */
   function drawElimination(x, y, progress) {
     const alpha = 1 - progress;
@@ -252,7 +262,10 @@ const Renderer = (function () {
   }
 
   /**
-   * Draw bounce effect
+   * Draw bounce effect (expanding gold circle)
+   * @param {number} x - X position
+   * @param {number} y - Y position
+   * @param {number} progress - Animation progress (0-1)
    */
   function drawBounce(x, y, progress) {
     const alpha = 1 - progress;
@@ -271,7 +284,8 @@ const Renderer = (function () {
   }
 
   /**
-   * Render a frame
+   * Render a frame with all players and effects
+   * @param {{effects: Array}} gameState - Game state with visual effects
    */
   function render(gameState) {
     clear();
@@ -295,7 +309,9 @@ const Renderer = (function () {
   }
 
   /**
-   * Draw countdown overlay
+   * Draw countdown overlay with number and player role
+   * @param {number} number - Countdown number (3, 2, 1, 0 for GO!)
+   * @param {string} role - Player's assigned role
    */
   function drawCountdown(number, role) {
     clear();

@@ -23,6 +23,8 @@ const Wallet = (function () {
 
   /**
    * Convert amount to USDC units using string parsing (avoids floating-point precision loss)
+   * @param {number|string} amount - Amount in USDC (e.g., 1.5)
+   * @returns {bigint} Amount in smallest units (6 decimals)
    */
   function toUSDCUnits(amount) {
     const [whole, decimal = ''] = amount.toString().split('.');
@@ -31,14 +33,17 @@ const Wallet = (function () {
   }
 
   /**
-   * Check if Web3 wallet is available
+   * Check if Web3 wallet is available (MetaMask or compatible)
+   * @returns {boolean} True if wallet is available
    */
   function isAvailable() {
     return typeof window.ethereum !== 'undefined';
   }
 
   /**
-   * Connect to wallet
+   * Connect to wallet and switch to Base network
+   * @returns {Promise<string>} Connected wallet address
+   * @throws {Error} If connection fails
    */
   async function connect() {
     if (!isAvailable()) {
@@ -128,6 +133,9 @@ const Wallet = (function () {
 
   /**
    * Sign a message for authentication
+   * @param {string} message - Message to sign
+   * @returns {Promise<string>} Signature
+   * @throws {Error} If wallet not connected
    */
   async function signMessage(message) {
     if (!signer) {
@@ -138,7 +146,11 @@ const Wallet = (function () {
   }
 
   /**
-   * Send USDC payment
+   * Send USDC payment to a recipient
+   * @param {string} recipientAddress - Recipient wallet address
+   * @param {number} amount - Amount in USDC (e.g., 1.0)
+   * @returns {Promise<string>} Transaction hash
+   * @throws {Error} If wallet not connected or insufficient balance
    */
   async function sendUSDC(recipientAddress, amount) {
     if (!signer) {
@@ -164,7 +176,8 @@ const Wallet = (function () {
   }
 
   /**
-   * Get USDC balance
+   * Get USDC balance of connected wallet
+   * @returns {Promise<number>} Balance in USDC
    */
   async function getUSDCBalance() {
     if (!provider || !address) {
@@ -178,7 +191,8 @@ const Wallet = (function () {
   }
 
   /**
-   * Handle account changes
+   * Handle account changes (MetaMask event)
+   * @param {string[]} accounts - New accounts array
    */
   function handleAccountsChanged(accounts) {
     if (accounts.length === 0) {
@@ -193,7 +207,8 @@ const Wallet = (function () {
   }
 
   /**
-   * Handle chain changes
+   * Handle chain changes (MetaMask event)
+   * @param {string} chainId - New chain ID in hex
    */
   function handleChainChanged(chainId) {
     if (chainId !== BASE_CHAIN_ID) {
@@ -202,21 +217,25 @@ const Wallet = (function () {
   }
 
   /**
-   * Get connected address
+   * Get connected wallet address
+   * @returns {string|null} Wallet address or null if not connected
    */
   function getAddress() {
     return address;
   }
 
   /**
-   * Check if connected
+   * Check if wallet is connected
+   * @returns {boolean} True if connected
    */
   function isConnected() {
     return connected;
   }
 
   /**
-   * Truncate address for display
+   * Truncate address for display (e.g., "0x1234...5678")
+   * @param {string} addr - Full wallet address
+   * @returns {string} Truncated address
    */
   function truncateAddress(addr) {
     if (!addr) return '';

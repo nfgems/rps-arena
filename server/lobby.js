@@ -96,6 +96,7 @@ async function initializeLobbies() {
 
 /**
  * Get lobby list for client display
+ * @returns {Array<{id: number, status: string, playerCount: number, timeRemaining: number|null, depositAddress: string}>}
  */
 function getLobbyList() {
   const lobbies = [];
@@ -119,7 +120,9 @@ function getLobbyList() {
 }
 
 /**
- * Get a specific lobby
+ * Get a specific lobby by ID
+ * @param {number} lobbyId - Lobby ID (1-10)
+ * @returns {Object|undefined} Lobby data or undefined if not found
  */
 function getLobby(lobbyId) {
   return activeLobbies.get(lobbyId);
@@ -127,6 +130,8 @@ function getLobby(lobbyId) {
 
 /**
  * Get lobby a user is currently in
+ * @param {string} userId - User's UUID
+ * @returns {{lobby: Object, player: Object}|null} Lobby and player data, or null if not in a lobby
  */
 function getPlayerLobby(userId) {
   for (const [id, lobby] of activeLobbies) {
@@ -295,6 +300,9 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skip
 
 /**
  * Register a WebSocket connection for a player in a lobby
+ * @param {number} lobbyId - Lobby ID
+ * @param {string} userId - User's UUID
+ * @param {WebSocket} ws - WebSocket connection
  */
 function registerConnection(lobbyId, userId, ws) {
   const lobby = activeLobbies.get(lobbyId);
@@ -309,6 +317,9 @@ function registerConnection(lobbyId, userId, ws) {
  * When a player disconnects before a match starts (status: waiting/ready),
  * we remove them from the lobby to free up the slot. They can still request
  * a refund via the timeout mechanism or by reconnecting.
+ *
+ * @param {number} lobbyId - Lobby ID
+ * @param {string} userId - User's UUID
  */
 function removeConnection(lobbyId, userId) {
   const lobby = activeLobbies.get(lobbyId);
@@ -497,6 +508,7 @@ async function processTreasuryRefund(lobbyId, reason) {
 
 /**
  * Reset a lobby to empty state
+ * @param {number} lobbyId - Lobby ID
  */
 function resetLobby(lobbyId) {
   const lobby = activeLobbies.get(lobbyId);
@@ -517,6 +529,8 @@ function resetLobby(lobbyId) {
 
 /**
  * Force reset a lobby (dev mode only) - works even during in_progress
+ * Closes all WebSocket connections and resets the lobby state
+ * @param {number} lobbyId - Lobby ID
  */
 function forceResetLobby(lobbyId) {
   const lobby = activeLobbies.get(lobbyId);
@@ -547,6 +561,8 @@ function forceResetLobby(lobbyId) {
 
 /**
  * Set lobby to in_progress when match starts
+ * @param {number} lobbyId - Lobby ID
+ * @param {string} matchId - Match UUID
  */
 function setLobbyInProgress(lobbyId, matchId) {
   const lobby = activeLobbies.get(lobbyId);
@@ -559,6 +575,8 @@ function setLobbyInProgress(lobbyId, matchId) {
 
 /**
  * Broadcast a message to all players in a lobby
+ * @param {number} lobbyId - Lobby ID
+ * @param {string} message - JSON message string to send
  */
 function broadcastToLobby(lobbyId, message) {
   const lobby = activeLobbies.get(lobbyId);
@@ -578,6 +596,7 @@ function broadcastToLobby(lobbyId, message) {
 /**
  * Check for lobbies that have timed out
  * Run periodically to enable refund buttons
+ * Notifies clients when timeout has been reached so refund button can be shown
  */
 function checkTimeouts() {
   const now = Date.now();
@@ -607,7 +626,8 @@ const STUCK_ALERT_RENOTIFY_MS = 24 * 60 * 60 * 1000; // Re-alert after 24 hours 
 
 /**
  * Check for lobbies stuck in waiting or in_progress for too long (2+ hours)
- * Alerts admin for manual review
+ * Alerts admin for manual review via Discord webhook
+ * Re-alerts every 24 hours if still stuck
  */
 function checkStuckLobbies() {
   const now = Date.now();
