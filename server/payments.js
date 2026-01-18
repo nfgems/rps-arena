@@ -232,7 +232,13 @@ function switchToNextProvider() {
   if (nextIndex >= rpcUrls.length) {
     // Wrap around to first provider
     currentRpcIndex = 0;
-    console.warn('All RPC providers attempted, cycling back to primary');
+    console.warn('[RPC] All RPC providers exhausted, cycling back to primary');
+    // R-2: Send alert when all providers have been tried
+    sendAlert(AlertType.RPC_ERROR, {
+      operation: 'provider_exhaustion',
+      error: 'All RPC providers attempted without success, cycling back to primary',
+      providersCount: rpcUrls.length,
+    }).catch(err => console.error('Alert send failed:', err.message));
     return false;
   }
 
@@ -267,6 +273,81 @@ async function testRpcConnection() {
   } catch (error) {
     return { healthy: false, latency: Date.now() - start, error: error.message };
   }
+}
+
+// R-3: Periodic RPC health check state
+let rpcHealthInterval = null;
+let lastRpcHealthStatus = { healthy: true, lastCheck: null, consecutiveFailures: 0 };
+const RPC_HEALTH_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const RPC_CONSECUTIVE_FAILURES_ALERT = 3; // Alert after 3 consecutive failures
+
+/**
+ * Start periodic RPC health monitoring
+ * Runs every 5 minutes to detect RPC issues proactively
+ */
+function startRpcHealthMonitor() {
+  if (rpcHealthInterval) {
+    console.log('[RPC] Health monitor already running');
+    return;
+  }
+
+  console.log('[RPC] Starting periodic health monitor (every 5 minutes)');
+
+  rpcHealthInterval = setInterval(async () => {
+    const health = await testRpcConnection();
+    lastRpcHealthStatus.lastCheck = Date.now();
+
+    if (health.healthy) {
+      // Reset failure count on success
+      if (lastRpcHealthStatus.consecutiveFailures > 0) {
+        console.log(`[RPC] Health restored - Block: ${health.blockNumber}, Latency: ${health.latency}ms`);
+      }
+      lastRpcHealthStatus.healthy = true;
+      lastRpcHealthStatus.consecutiveFailures = 0;
+      lastRpcHealthStatus.latency = health.latency;
+      lastRpcHealthStatus.blockNumber = health.blockNumber;
+    } else {
+      lastRpcHealthStatus.consecutiveFailures++;
+      lastRpcHealthStatus.healthy = false;
+      lastRpcHealthStatus.error = health.error;
+
+      console.warn(`[RPC] Health check failed (${lastRpcHealthStatus.consecutiveFailures}x): ${health.error}`);
+
+      // Try switching providers on failure
+      const switched = switchToNextProvider();
+      if (switched) {
+        console.log('[RPC] Switched to fallback provider due to health check failure');
+      }
+
+      // Alert after consecutive failures
+      if (lastRpcHealthStatus.consecutiveFailures === RPC_CONSECUTIVE_FAILURES_ALERT) {
+        sendAlert(AlertType.RPC_ERROR, {
+          operation: 'periodic_health_check',
+          error: health.error,
+          consecutiveFailures: lastRpcHealthStatus.consecutiveFailures,
+        }).catch(err => console.error('Alert send failed:', err.message));
+      }
+    }
+  }, RPC_HEALTH_CHECK_INTERVAL_MS);
+}
+
+/**
+ * Stop periodic RPC health monitoring
+ */
+function stopRpcHealthMonitor() {
+  if (rpcHealthInterval) {
+    clearInterval(rpcHealthInterval);
+    rpcHealthInterval = null;
+    console.log('[RPC] Health monitor stopped');
+  }
+}
+
+/**
+ * Get current RPC health status
+ * @returns {{healthy: boolean, lastCheck: number|null, consecutiveFailures: number, latency?: number, error?: string}}
+ */
+function getRpcHealthStatus() {
+  return { ...lastRpcHealthStatus };
 }
 
 /**
@@ -540,23 +621,6 @@ async function sendRefundFromLobby(encryptedPrivateKey, recipientAddress, lobbyI
   return sendUsdc(lobbyWallet, recipientAddress, BUY_IN_AMOUNT);
 }
 
-/**
- * Send refund from treasury (for post-match refunds)
- * @param {string} recipientAddress - Player's wallet address
- * @returns {Object} { success, txHash, error }
- */
-async function sendRefundFromTreasury(recipientAddress) {
-  const treasuryWallet = getTreasuryWallet();
-  if (!treasuryWallet) {
-    return { success: false, error: 'Treasury mnemonic not configured' };
-  }
-
-  // Check for low ETH (non-blocking, just alerts)
-  checkLowEth(treasuryWallet.address, 'treasury');
-
-  return sendUsdc(treasuryWallet, recipientAddress, BUY_IN_AMOUNT);
-}
-
 // ============================================
 // Balance Checking
 // ============================================
@@ -705,7 +769,6 @@ module.exports = {
   sendUsdc,
   sendWinnerPayout,
   sendRefundFromLobby,
-  sendRefundFromTreasury,
 
   // Treasury
   getTreasuryWallet,
@@ -719,4 +782,9 @@ module.exports = {
   classifyError,
   testRpcConnection,
   withRetry,
+
+  // R-3: Periodic RPC health monitoring
+  startRpcHealthMonitor,
+  stopRpcHealthMonitor,
+  getRpcHealthStatus,
 };

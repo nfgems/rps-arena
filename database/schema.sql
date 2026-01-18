@@ -163,3 +163,12 @@ CREATE TABLE IF NOT EXISTS reserved_usernames (
   reserved_by TEXT NOT NULL,
   reserved_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Paid wallets (master list of all wallets that have ever paid to play)
+-- Used for future airdrops and rewards tracking
+CREATE TABLE IF NOT EXISTS paid_wallets (
+  wallet_address TEXT PRIMARY KEY,
+  first_payment_at TEXT DEFAULT (datetime('now')),
+  total_payments INTEGER NOT NULL DEFAULT 1,
+  last_payment_at TEXT DEFAULT (datetime('now'))
+);

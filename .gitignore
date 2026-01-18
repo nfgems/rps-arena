@@ -12,6 +12,9 @@ data/
 *.db-wal
 *.db-shm
 
+# Backups
+backups/
+
 # Logs
 logs/
 *.log

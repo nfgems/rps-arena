@@ -126,9 +126,9 @@ async function voidAndRefundFromRecovery(matchId, lobbyId, state, reason) {
   // Log the void
   logger.logMatchEnd(matchId, state?.players?.[0]?.tick || 0, null, reason);
 
-  // Process refunds for all players via treasury
+  // Process refunds for all players via lobby wallet
   if (lobbyId) {
-    await lobby.processTreasuryRefund(lobbyId, 'server_crash');
+    await lobby.processLobbyRefund(lobbyId, 'server_crash');
   }
 
   // Reset lobby
@@ -643,24 +643,8 @@ async function endMatch(match, winner, reason) {
     const winnerPlayer = match.players.find(p => p.id === winner.id);
     const lobbyData = lobby.getLobby(match.lobbyId);
 
-    // Check treasury balance before attempting payout
-    // This ensures we have a fallback if payout fails and we need to refund
-    let treasuryBalance = null;
-    try {
-      const treasuryInfo = await payments.getTreasuryBalance();
-      treasuryBalance = treasuryInfo.formatted;
-      const treasuryBalanceRaw = BigInt(treasuryInfo.balance);
-      const refundAmount = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC for 3 players
-
-      if (treasuryBalanceRaw < refundAmount) {
-        console.warn(`[PAYOUT] Treasury balance (${treasuryBalance} USDC) insufficient for potential refunds (need 3.0 USDC). Proceeding with caution.`);
-        // Note: We don't alert here since we're proceeding anyway.
-        // If payout fails, the PAYOUT_FAILED alert will fire and include context about refunds.
-      }
-    } catch (balanceError) {
-      console.error('[PAYOUT] Failed to check treasury balance:', balanceError.message);
-      // Continue anyway - we'll handle failure if payout fails
-    }
+    // Note: Refunds come from lobby wallet (where deposits are), not treasury
+    // Treasury only receives swept fees after successful matches
 
     // Log the payout attempt before trying
     const attemptRecord = db.logPayoutAttempt({
@@ -671,7 +655,6 @@ async function endMatch(match, winner, reason) {
       attemptNumber: 1,
       status: 'pending',
       sourceWallet: 'lobby',
-      treasuryBalanceBefore: treasuryBalance,
     });
 
     let payoutResult;
@@ -740,11 +723,11 @@ async function endMatch(match, winner, reason) {
         matchId: match.id,
         winnerAddress: winnerPlayer.walletAddress,
         error: payoutResult.error,
-        action: 'Voiding match and refunding all players from treasury',
+        action: 'Voiding match and refunding all players from lobby wallet',
       }).catch(err => console.error('Alert send failed:', err.message));
 
-      // Process refunds for all players from treasury
-      const refundResult = await lobby.processTreasuryRefund(match.lobbyId, 'payout_failed');
+      // Process refunds for all players from lobby wallet
+      const refundResult = await lobby.processLobbyRefund(match.lobbyId, 'payout_failed');
 
       // Log refund results
       console.log(`[PAYOUT] Refund result for match ${match.id}:`, refundResult);
@@ -766,7 +749,7 @@ async function endMatch(match, winner, reason) {
     db.updateMatchStatus(match.id, 'void');
 
     // Process refunds
-    await lobby.processTreasuryRefund(match.lobbyId, reason);
+    await lobby.processLobbyRefund(match.lobbyId, reason);
   }
 
   // Clean up persisted state (match ended normally or voided)
@@ -804,7 +787,7 @@ async function voidMatch(matchId, reason) {
   logger.logMatchEnd(matchId, match.tick, null, reason);
 
   // Process refunds for all players
-  await lobby.processTreasuryRefund(match.lobbyId, reason);
+  await lobby.processLobbyRefund(match.lobbyId, reason);
 
   const refundMsg = protocol.createRefundProcessed(match.lobbyId, reason,
     match.players.map(p => ({

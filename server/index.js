@@ -8,6 +8,10 @@
 
 require('dotenv').config();
 
+// Initialize Sentry first (before any other imports that might throw)
+const sentry = require('./sentry');
+sentry.init();
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -384,6 +388,58 @@ adminApp.post('/api/bot/remove', (req, res) => {
 });
 
 // ============================================
+// Admin Database Backup Routes (Port 3001 Only)
+// ============================================
+
+// Create a database backup
+adminApp.post('/api/admin/backup', async (req, res) => {
+  try {
+    const result = await db.createTimestampedBackup();
+    if (result.success) {
+      res.json({
+        success: true,
+        backup: {
+          path: result.path,
+          sizeMB: result.sizeMB,
+        },
+      });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// List existing backups
+adminApp.get('/api/admin/backups', (req, res) => {
+  const result = db.listBackups();
+  res.json({
+    success: true,
+    count: result.backups.length,
+    backups: result.backups.map(b => ({
+      name: b.name,
+      sizeMB: b.sizeMB,
+      created: b.created,
+    })),
+  });
+});
+
+// Run WAL checkpoint
+adminApp.post('/api/admin/checkpoint', (req, res) => {
+  const mode = req.body.mode || 'PASSIVE';
+  const result = db.walCheckpoint(mode);
+  res.json(result);
+});
+
+// Cleanup old backups
+adminApp.post('/api/admin/backup/cleanup', (req, res) => {
+  const keepCount = parseInt(req.body.keepCount) || 24;
+  const result = db.cleanupOldBackups(keepCount);
+  res.json({ success: true, ...result });
+});
+
+// ============================================
 // Rate Limiting
 // ============================================
 
@@ -712,7 +768,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
                 lobbyId,
                 balance: error.balance || 'unknown',
               }).catch(alertErr => console.error('Alert send failed:', alertErr));
-              await lobby.processTreasuryRefund(lobbyId, 'insufficient_lobby_balance');
+              await lobby.processLobbyRefund(lobbyId, 'insufficient_lobby_balance');
               broadcastLobbyList();
             } else {
               // Catch-all: Reset lobby status on any match start error to prevent stuck lobbies
@@ -723,7 +779,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
                 error: error.message,
               }).catch(alertErr => console.error('Alert send failed:', alertErr));
               try {
-                await lobby.processTreasuryRefund(lobbyId, 'match_start_failed');
+                await lobby.processLobbyRefund(lobbyId, 'match_start_failed');
                 broadcastLobbyList();
               } catch (refundErr) {
                 console.error(`[MATCH_START] Failed to refund lobby ${lobbyId}:`, refundErr);
@@ -814,6 +870,14 @@ function broadcastLobbyList() {
 async function initialize() {
   console.log('Initializing RPS Arena server...');
 
+  // B-1: Ensure backup directory exists at startup
+  const fs = require('fs');
+  const backupDir = './backups';
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+    console.log(`[BACKUP] Created backup directory: ${backupDir}`);
+  }
+
   // Check database health before proceeding
   const dbHealth = db.checkHealth();
   if (!dbHealth.healthy) {
@@ -846,8 +910,70 @@ async function initialize() {
   // Initialize payment provider
   payments.initProvider();
 
+  // Test RPC connectivity on startup (R-1: Critical startup check)
+  const rpcHealth = await payments.testRpcConnection();
+  if (!rpcHealth.healthy) {
+    console.error(`[WARNING] RPC provider unreachable: ${rpcHealth.error}`);
+    console.error('[WARNING] Payment operations may fail until RPC is available');
+    // Send alert but don't exit - fallback RPCs may work for actual transactions
+    sendAlert(AlertType.RPC_ERROR, {
+      operation: 'startup_health_check',
+      error: rpcHealth.error,
+    }).catch(err => console.error('Alert send failed:', err.message));
+  } else {
+    console.log(`[RPC] Health check passed - Block: ${rpcHealth.blockNumber}, Latency: ${rpcHealth.latency}ms`);
+  }
+
   // Start game loop health monitor
   match.startHealthMonitor();
+
+  // R-3: Start periodic RPC health monitor
+  payments.startRpcHealthMonitor();
+
+  // Start automated backup scheduler (hourly)
+  const backupIntervalHours = parseInt(process.env.BACKUP_INTERVAL_HOURS, 10);
+  const BACKUP_INTERVAL_MS = (backupIntervalHours > 0 ? backupIntervalHours : 1) * 60 * 60 * 1000; // Default 1 hour, minimum 1 hour
+  const BACKUP_KEEP_COUNT = Math.max(1, parseInt(process.env.BACKUP_KEEP_COUNT, 10) || 24); // Default 24, minimum 1
+
+  setInterval(async () => {
+    console.log('[BACKUP] Running scheduled backup...');
+    try {
+      // Run checkpoint first
+      db.walCheckpoint('PASSIVE');
+
+      // Create backup
+      const result = await db.createTimestampedBackup();
+      if (result.success) {
+        console.log(`[BACKUP] Backup created: ${result.sizeMB} MB`);
+
+        // B-2: Verify backup integrity
+        const integrity = db.verifyBackupIntegrity(result.path);
+        if (integrity.valid) {
+          console.log('[BACKUP] Integrity check passed');
+        } else {
+          console.error(`[BACKUP] Integrity check FAILED: ${integrity.error}`);
+          // Alert on backup integrity failure
+          sendAlert(AlertType.DATABASE_ERROR, {
+            operation: 'backup_integrity_check',
+            error: integrity.error,
+            backupPath: result.path,
+          }).catch(err => console.error('Alert send failed:', err.message));
+        }
+
+        // Cleanup old backups
+        const cleanup = db.cleanupOldBackups(BACKUP_KEEP_COUNT);
+        if (cleanup.deleted > 0) {
+          console.log(`[BACKUP] Cleaned up ${cleanup.deleted} old backup(s)`);
+        }
+      } else {
+        console.error(`[BACKUP] Backup failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error(`[BACKUP] Scheduled backup error: ${error.message}`);
+    }
+  }, BACKUP_INTERVAL_MS);
+
+  console.log(`Automated backups: every ${BACKUP_INTERVAL_MS / (60 * 60 * 1000)} hour(s), keeping ${BACKUP_KEEP_COUNT} backups`);
 
   // Start production server (port 3000)
   server.listen(PUBLIC_PORT, () => {
@@ -861,6 +987,20 @@ async function initialize() {
 
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
+  // D-3: Log comprehensive startup health summary
+  console.log('');
+  console.log('='.repeat(50));
+  console.log('RPS Arena Server Started Successfully');
+  console.log('='.repeat(50));
+  console.log(`  Environment:    ${process.env.NODE_ENV || 'development'}`);
+  console.log(`  Public Port:    ${PUBLIC_PORT}`);
+  console.log(`  Admin Port:     ${ADMIN_PORT}`);
+  console.log(`  Database:       ${dbHealth.path}`);
+  console.log(`  RPC Status:     ${rpcHealth.healthy ? 'Connected' : 'DEGRADED'}`);
+  console.log(`  Sentry:         ${sentry.isInitialized() ? 'Enabled' : 'Disabled'}`);
+  console.log('='.repeat(50));
+  console.log('');
+
   // Send startup alert (helps detect crashes/restarts)
   sendAlert(AlertType.SERVER_START, { port: PUBLIC_PORT })
     .catch(err => console.error('Alert send failed:', err.message));
@@ -871,8 +1011,9 @@ async function gracefulShutdown(reason) {
   console.log('\nShutting down...');
   await sendAlert(AlertType.SERVER_SHUTDOWN, { reason });
 
-  // Stop health monitor
+  // Stop health monitors
   match.stopHealthMonitor();
+  payments.stopRpcHealthMonitor();
 
   // Close all WebSocket connections on both servers
   wss.clients.forEach((client) => {
@@ -882,6 +1023,9 @@ async function gracefulShutdown(reason) {
   adminWss.clients.forEach((client) => {
     client.close(1001, 'Server shutting down');
   });
+
+  // Flush Sentry before closing
+  await sentry.flush(2000);
 
   server.close(() => {
     console.log('Production server closed');
@@ -897,11 +1041,27 @@ async function gracefulShutdown(reason) {
   });
 }
 
+// Capture unhandled errors with Sentry
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  sentry.captureException(error, { category: 'uncaughtException' });
+  // Give Sentry time to send, then exit
+  sentry.flush(2000).finally(() => process.exit(1));
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)), {
+    category: 'unhandledRejection',
+  });
+});
+
 process.on('SIGINT', () => gracefulShutdown('SIGINT (manual stop)'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM (container stop)'));
 
 // Start the server
 initialize().catch((error) => {
   console.error('Failed to initialize server:', error);
-  process.exit(1);
+  sentry.captureException(error, { category: 'initialization' });
+  sentry.flush(2000).finally(() => process.exit(1));
 });

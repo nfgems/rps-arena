@@ -433,6 +433,209 @@ function closeDb() {
   }
 }
 
+// ============================================
+// WAL Checkpointing & Backup
+// ============================================
+
+/**
+ * Run a WAL checkpoint to merge WAL file into main database
+ * This should be run periodically (e.g., hourly) to prevent WAL file growth
+ *
+ * @param {string} mode - 'PASSIVE' (default, non-blocking), 'FULL', or 'TRUNCATE'
+ * @returns {{success: boolean, pagesWritten?: number, pagesRemaining?: number, error?: string}}
+ */
+function walCheckpoint(mode = 'PASSIVE') {
+  try {
+    const database = getDb();
+    if (!database) {
+      return { success: false, error: 'Database not connected' };
+    }
+
+    // Valid modes: PASSIVE, FULL, RESTART, TRUNCATE
+    const validModes = ['PASSIVE', 'FULL', 'RESTART', 'TRUNCATE'];
+    if (!validModes.includes(mode.toUpperCase())) {
+      return { success: false, error: `Invalid mode: ${mode}` };
+    }
+
+    const result = database.pragma(`wal_checkpoint(${mode.toUpperCase()})`);
+    // Result is array: [{ busy: 0|1, log: pages_in_wal, checkpointed: pages_written }]
+    const checkpoint = result[0] || {};
+
+    console.log(`[DB] WAL checkpoint (${mode}): ${checkpoint.checkpointed || 0} pages written, ${checkpoint.log - (checkpoint.checkpointed || 0)} remaining`);
+
+    return {
+      success: checkpoint.busy === 0,
+      pagesWritten: checkpoint.checkpointed || 0,
+      pagesRemaining: (checkpoint.log || 0) - (checkpoint.checkpointed || 0),
+      busy: checkpoint.busy === 1,
+    };
+  } catch (error) {
+    console.error(`[DB ERROR] WAL checkpoint failed: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Create a backup of the database using SQLite's backup API
+ * This is safe to call while the database is in use (online backup)
+ *
+ * @param {string} backupPath - Path for the backup file
+ * @returns {Promise<{success: boolean, path?: string, size?: number, error?: string}>}
+ */
+async function createBackup(backupPath) {
+  try {
+    const database = getDb();
+    if (!database) {
+      return { success: false, error: 'Database not connected' };
+    }
+
+    // Ensure backup directory exists
+    const backupDir = path.dirname(backupPath);
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    // Run checkpoint first to ensure WAL is merged
+    walCheckpoint('PASSIVE');
+
+    // Use better-sqlite3's backup method (async, safe during writes)
+    await database.backup(backupPath);
+
+    // Get file size for logging
+    const stats = fs.statSync(backupPath);
+    const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+
+    console.log(`[DB] Backup created: ${backupPath} (${sizeMB} MB)`);
+
+    return {
+      success: true,
+      path: backupPath,
+      size: stats.size,
+      sizeMB: parseFloat(sizeMB),
+    };
+  } catch (error) {
+    console.error(`[DB ERROR] Backup failed: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Verify backup integrity by opening it and running integrity_check
+ * @param {string} backupPath - Path to the backup file
+ * @returns {{valid: boolean, error?: string}}
+ */
+function verifyBackupIntegrity(backupPath) {
+  let backupDb = null;
+  try {
+    if (!fs.existsSync(backupPath)) {
+      return { valid: false, error: 'Backup file does not exist' };
+    }
+
+    // Open backup database in read-only mode
+    const Database = require('better-sqlite3');
+    backupDb = new Database(backupPath, { readonly: true });
+
+    // Run SQLite integrity check
+    const result = backupDb.pragma('integrity_check');
+
+    // integrity_check returns [{integrity_check: 'ok'}] if valid
+    const isValid = result.length === 1 && result[0].integrity_check === 'ok';
+
+    if (!isValid) {
+      const errors = result.map(r => r.integrity_check).join(', ');
+      console.error(`[DB] Backup integrity check failed: ${errors}`);
+      return { valid: false, error: `Integrity check failed: ${errors}` };
+    }
+
+    // Also verify we can read a basic table
+    const tableCheck = backupDb.prepare("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1").get();
+    if (!tableCheck) {
+      return { valid: false, error: 'Backup contains no tables' };
+    }
+
+    console.log(`[DB] Backup integrity verified: ${backupPath}`);
+    return { valid: true };
+  } catch (error) {
+    console.error(`[DB ERROR] Backup verification failed: ${error.message}`);
+    return { valid: false, error: error.message };
+  } finally {
+    if (backupDb) {
+      try {
+        backupDb.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+    }
+  }
+}
+
+/**
+ * Create a timestamped backup in the backups directory
+ * @returns {Promise<{success: boolean, path?: string, error?: string}>}
+ */
+async function createTimestampedBackup() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.resolve('./backups', `rps-arena-${timestamp}.db`);
+  return createBackup(backupPath);
+}
+
+/**
+ * Get list of existing backups
+ * @returns {{backups: Array<{name: string, path: string, size: number, created: Date}>}}
+ */
+function listBackups() {
+  const backupDir = path.resolve('./backups');
+
+  if (!fs.existsSync(backupDir)) {
+    return { backups: [] };
+  }
+
+  const files = fs.readdirSync(backupDir)
+    .filter(f => f.endsWith('.db'))
+    .map(f => {
+      const fullPath = path.join(backupDir, f);
+      const stats = fs.statSync(fullPath);
+      return {
+        name: f,
+        path: fullPath,
+        size: stats.size,
+        sizeMB: (stats.size / (1024 * 1024)).toFixed(2),
+        created: stats.mtime,
+      };
+    })
+    .sort((a, b) => b.created - a.created); // Newest first
+
+  return { backups: files };
+}
+
+/**
+ * Clean up old backups, keeping only the most recent N
+ * @param {number} keepCount - Number of backups to keep (default 24 = 1 day of hourly backups)
+ * @returns {{deleted: number, kept: number}}
+ */
+function cleanupOldBackups(keepCount = 24) {
+  const { backups } = listBackups();
+
+  if (backups.length <= keepCount) {
+    return { deleted: 0, kept: backups.length };
+  }
+
+  const toDelete = backups.slice(keepCount);
+  let deleted = 0;
+
+  for (const backup of toDelete) {
+    try {
+      fs.unlinkSync(backup.path);
+      deleted++;
+      console.log(`[DB] Deleted old backup: ${backup.name}`);
+    } catch (error) {
+      console.error(`[DB ERROR] Failed to delete backup ${backup.name}: ${error.message}`);
+    }
+  }
+
+  return { deleted, kept: keepCount };
+}
+
 /**
  * Initialize database with schema
  * @returns {boolean} True if initialization succeeded
@@ -1799,6 +2002,68 @@ function rebuildAllPlayerStats() {
 }
 
 // ============================================
+// Paid Wallets (Airdrop List)
+// ============================================
+
+/**
+ * Track a wallet address that has paid to play
+ * Called when a player successfully joins a lobby with confirmed payment
+ * Updates total_payments and last_payment_at if wallet already exists
+ *
+ * @param {string} walletAddress - Player's wallet address
+ * @returns {Object|null} The paid wallet record
+ */
+function trackPaidWallet(walletAddress) {
+  return withDbErrorHandling('trackPaidWallet', () => {
+    const database = getDb();
+    const normalizedAddress = walletAddress.toLowerCase();
+    const now = new Date().toISOString();
+
+    const stmt = database.prepare(`
+      INSERT INTO paid_wallets (wallet_address, first_payment_at, total_payments, last_payment_at)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(wallet_address) DO UPDATE SET
+        total_payments = total_payments + 1,
+        last_payment_at = excluded.last_payment_at
+    `);
+    stmt.run(normalizedAddress, now, now);
+
+    // Return the record
+    const getStmt = database.prepare('SELECT * FROM paid_wallets WHERE wallet_address = ?');
+    return getStmt.get(normalizedAddress);
+  }, null);
+}
+
+/**
+ * Get all wallets that have ever paid to play (for airdrops)
+ * Returns unique wallet addresses sorted by first payment date
+ *
+ * @returns {Array<{wallet_address: string, first_payment_at: string, total_payments: number, last_payment_at: string}>}
+ */
+function getAllPaidWallets() {
+  return withDbErrorHandling('getAllPaidWallets', () => {
+    const database = getDb();
+    const stmt = database.prepare(`
+      SELECT * FROM paid_wallets
+      ORDER BY first_payment_at ASC
+    `);
+    return stmt.all();
+  }, []);
+}
+
+/**
+ * Get count of unique paid wallets
+ * @returns {number} Total number of unique wallets that have paid
+ */
+function getPaidWalletCount() {
+  return withDbErrorHandling('getPaidWalletCount', () => {
+    const database = getDb();
+    const stmt = database.prepare('SELECT COUNT(*) as count FROM paid_wallets');
+    return stmt.get().count;
+  }, 0);
+}
+
+// ============================================
 // Exports
 // ============================================
 
@@ -1817,6 +2082,14 @@ module.exports = {
   // Graceful degradation
   getDeferredQueueStatus,
   processDeferredQueue,
+
+  // WAL Checkpointing & Backup
+  walCheckpoint,
+  createBackup,
+  createTimestampedBackup,
+  verifyBackupIntegrity,
+  listBackups,
+  cleanupOldBackups,
 
   // Users
   createUser,
@@ -1892,4 +2165,9 @@ module.exports = {
   getLeaderboard,
   rebuildPlayerStats,
   rebuildAllPlayerStats,
+
+  // Paid Wallets (Airdrop List)
+  trackPaidWallet,
+  getAllPaidWallets,
+  getPaidWalletCount,
 };

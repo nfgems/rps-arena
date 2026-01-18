@@ -1,0 +1,17 @@
+# Nixpacks configuration for Railway deployment
+# better-sqlite3 requires native compilation
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "python3", "gcc", "gnumake"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+# D-2: Removed init-db from build phase
+# Database initialization happens at server startup in index.js
+# schema.sql uses CREATE TABLE IF NOT EXISTS, making it idempotent
+[phases.build]
+cmds = []
+
+[start]
+cmd = "npm start"

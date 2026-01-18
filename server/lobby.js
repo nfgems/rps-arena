@@ -260,6 +260,11 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skip
       username: user.username,
     });
 
+    // Track wallet for airdrop list (only for real payments)
+    if (!skipPayment) {
+      db.trackPaidWallet(user.wallet_address);
+    }
+
     // Update lobby state
     if (lobby.status === 'empty') {
       db.setLobbyFirstJoin(lobbyId);
@@ -445,12 +450,13 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
 }
 
 /**
- * Process refund from treasury (for server crash, mass disconnect)
+ * Process refunds from lobby wallet (for server crash, void, timeouts, etc.)
+ * Refunds come from the lobby wallet since that's where player deposits went.
  * @param {number} lobbyId - Lobby ID
  * @param {string} reason - Refund reason
  * @returns {Object} { success, refunds }
  */
-async function processTreasuryRefund(lobbyId, reason) {
+async function processLobbyRefund(lobbyId, reason) {
   const lobby = activeLobbies.get(lobbyId);
   if (!lobby) return { success: false, refunds: [] };
 
@@ -464,9 +470,14 @@ async function processTreasuryRefund(lobbyId, reason) {
     for (const p of playersToRefund) {
       let result;
       try {
-        result = await payments.sendRefundFromTreasury(p.wallet_address);
+        // Use lobby wallet for refunds - the USDC is already there from deposits
+        result = await payments.sendRefundFromLobby(
+          lobby.deposit_private_key_encrypted,
+          p.wallet_address,
+          lobbyId
+        );
       } catch (error) {
-        console.error(`Treasury refund exception for player ${p.user_id}:`, error);
+        console.error(`Lobby refund exception for player ${p.user_id}:`, error);
         result = { success: false, error: error.message || 'Unknown refund error' };
       }
 
@@ -699,7 +710,7 @@ module.exports = {
   registerConnection,
   removeConnection,
   processTimeoutRefund,
-  processTreasuryRefund,
+  processLobbyRefund,
   resetLobby,
   forceResetLobby,
   setLobbyInProgress,
