@@ -223,7 +223,10 @@ const UI = (function () {
 
     } catch (error) {
       console.error('Connection failed:', error);
-      alert('Failed to connect: ' + error.message);
+      // Don't show alert for user cancellation
+      if (error.message !== 'User cancelled connection') {
+        alert('Failed to connect: ' + error.message);
+      }
     } finally {
       const btn = document.getElementById('connect-wallet-btn');
       btn.disabled = false;

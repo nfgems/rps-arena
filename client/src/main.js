@@ -3,23 +3,9 @@
  */
 
 // Wait for DOM to load
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   console.log('RPS Arena client starting...');
-
-  // Check if ethers is available (from CDN or bundled)
-  if (typeof ethers === 'undefined') {
-    // Load ethers from CDN
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.0/ethers.umd.min.js';
-    script.onload = initializeApp;
-    script.onerror = () => {
-      console.error('Failed to load ethers library');
-      alert('Failed to load required libraries. Please refresh the page.');
-    };
-    document.head.appendChild(script);
-  } else {
-    initializeApp();
-  }
+  initializeApp();
 });
 
 /**

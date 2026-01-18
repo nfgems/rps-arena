@@ -201,7 +201,24 @@
     </div>
   </div>
 
+  <!-- Wallet Selection Modal -->
+  <div id="wallet-modal" class="modal hidden">
+    <div class="modal-content wallet-modal-content">
+      <h3>Connect Wallet</h3>
+      <p class="wallet-modal-subtitle">Choose your wallet</p>
+      <div id="wallet-list" class="wallet-list">
+        <!-- Wallets populated by JS via EIP-6963 -->
+      </div>
+      <div id="no-wallets-message" class="no-wallets-message hidden">
+        <p>No wallets detected.</p>
+        <p>Please install a Web3 wallet like <a href="https://metamask.io" target="_blank">MetaMask</a> or <a href="https://rabby.io" target="_blank">Rabby</a>.</p>
+      </div>
+      <button id="cancel-wallet-btn" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
+
   <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.0/ethers.umd.min.js"></script>
   <script src="src/wallet.js"></script>
   <script src="src/network.js"></script>
   <script src="src/input.js"></script>

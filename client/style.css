@@ -43,6 +43,10 @@ body {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
 /* Buttons */
 .btn {
   padding: 12px 24px;
@@ -478,6 +482,85 @@ body {
 .payment-status {
   margin-top: 16px;
   color: var(--text-secondary);
+}
+
+/* Wallet Selection Modal */
+.wallet-modal-content {
+  min-width: 320px;
+  max-width: 400px;
+}
+
+.wallet-modal-subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.wallet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.wallet-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-dark);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.wallet-option:hover {
+  background: rgba(233, 69, 96, 0.1);
+  border-color: var(--accent);
+}
+
+.wallet-option img {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #fff;
+}
+
+.wallet-option-info {
+  flex: 1;
+}
+
+.wallet-option-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.wallet-option-detected {
+  font-size: 12px;
+  color: var(--success);
+  margin-top: 2px;
+}
+
+.no-wallets-message {
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.no-wallets-message a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.no-wallets-message a:hover {
+  text-decoration: underline;
 }
 
 /* Role Colors */
