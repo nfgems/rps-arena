@@ -132,7 +132,7 @@ async function voidAndRefundFromRecovery(matchId, lobbyId, state, reason) {
     result: 'voided',
     reason,
     playerCount: state?.players?.length || 0,
-  });
+  }).catch(err => console.error('Alert send failed:', err.message));
 
   console.log(`[RECOVERY] Match ${matchId} voided and players refunded (reason: ${reason})`);
 }
@@ -212,8 +212,8 @@ async function startMatch(lobbyId) {
     // Check lobby wallet balance before starting match (should have 3 USDC from 3 players)
     const lobbyBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
     const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
-    if (BigInt(lobbyBalance.balance) < BigInt(payments.WINNER_PAYOUT)) {
-      console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${payments.WINNER_PAYOUT / 1_000_000} USDC for payout)`);
+    if (BigInt(lobbyBalance.balance) < expectedBalance) {
+      console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${Number(expectedBalance) / 1_000_000} USDC expected from 3 players)`);
       const err = new Error('INSUFFICIENT_LOBBY_BALANCE');
       err.balance = lobbyBalance.formatted;
       throw err;
@@ -283,7 +283,7 @@ async function startMatch(lobbyId) {
       lobbyId,
       matchId: matchData.id,
       players: matchPlayers.map(p => p.username).join(', '),
-    });
+    }).catch(err => console.error('Alert send failed:', err.message));
 
     return match;
   } finally {
@@ -476,7 +476,7 @@ function startGameLoop(match) {
           error: error.message,
           consecutiveErrors: errorState.count,
           errorType,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
 
         // Void the match and refund players
         voidMatch(match.id, 'game_loop_error').catch(voidErr => {
@@ -701,7 +701,7 @@ async function endMatch(match, winner, reason) {
         winner: winnerPlayer.username,
         payoutSuccess: true,
         txHash: payoutResult.txHash,
-      });
+      }).catch(err => console.error('Alert send failed:', err.message));
 
       // Send match end message to clients
       const endMsg = protocol.createMatchEnd(winner.id, {
@@ -725,7 +725,7 @@ async function endMatch(match, winner, reason) {
         winnerAddress: winnerPlayer.walletAddress,
         error: payoutResult.error,
         action: 'Voiding match and refunding all players from treasury',
-      });
+      }).catch(err => console.error('Alert send failed:', err.message));
 
       // Process refunds for all players from treasury
       const refundResult = await lobby.processTreasuryRefund(match.lobbyId, 'payout_failed');
@@ -759,6 +759,7 @@ async function endMatch(match, winner, reason) {
   // Cleanup
   setTimeout(() => {
     activeMatches.delete(match.id);
+    matchTickErrors.delete(match.id);
     lobby.resetLobby(match.lobbyId);
   }, 5000); // Keep match data for 5 seconds for final messages
 
@@ -801,6 +802,7 @@ async function voidMatch(matchId, reason) {
 
   setTimeout(() => {
     activeMatches.delete(matchId);
+    matchTickErrors.delete(matchId);
   }, 5000);
 
   console.log(`Match ${matchId} voided. Reason: ${reason}`);
@@ -963,7 +965,7 @@ function startHealthMonitor() {
           tick: match.tick,
           staleDuration: timeSinceLastTick,
           maxAllowed: MAX_TICK_STALENESS,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
 
         // Clear the potentially dead interval
         if (match.gameLoopInterval) {

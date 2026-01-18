@@ -69,60 +69,60 @@ These issues can cause crashes, data loss, or security vulnerabilities. **Do not
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 16 | H1 | Unhandled match start errors leave lobby stuck | `server/index.js:470-486` | [ ] | [ ] | Add catch-all that resets lobby status |
-| 17 | H2 | Null check missing in lobby broadcast | `server/lobby.js:471-474` | [ ] | [ ] | Add `if (ws && ws.readyState === 1)` |
-| 18 | H4 | Disconnected players not cleaned from lobby | `server/lobby.js:251-266` | [ ] | [ ] | Clean up on disconnect if no active match |
+| 16 | H1 | Unhandled match start errors leave lobby stuck | `server/index.js:470-486` | [x] | [ ] | Added catch-all with refund attempt, force reset as last resort |
+| 17 | H2 | Null check missing in lobby broadcast | `server/lobby.js:471-474` | [x] | [ ] | Added null check to broadcastToLobby and forceResetLobby |
+| 18 | H4 | Disconnected players not cleaned from lobby | `server/lobby.js:251-266` | [x] | [ ] | removeConnection now cleans up player slot and updates lobby status |
 
 ### 2.2 Alert System
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 19 | H5 | Fire-and-forget alert calls lose errors | Multiple files | [ ] | [ ] | Either await or add .catch() handler |
-| 20 | H11 | Alert delivery failures not retried | `server/alerts.js:44-72` | [ ] | [ ] | Add retry logic or queue to file |
+| 19 | H5 | Fire-and-forget alert calls lose errors | Multiple files | [x] | [ ] | Added .catch() handler to all 17 sendAlert calls |
+| 20 | H11 | Alert delivery failures not retried | `server/alerts.js:44-72` | [x] | [ ] | Added retry with exponential backoff (3 attempts for critical alerts, handles rate limits) |
 
 ### 2.3 Payment & Blockchain
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 21 | H6 | Balance check variable unused (expectedBalance) | `server/match.js:210-211` | [ ] | [ ] | Decide which check is correct |
-| 22 | H12 | Payout only waits for 1 confirmation | `server/payments.js:438-439` | [ ] | [ ] | Change to `tx.wait(3)` |
-| 23 | H13 | No nonce management in payout retries | `server/payments.js:132-177` | [ ] | [ ] | Track nonce explicitly |
+| 21 | H6 | Balance check variable unused (expectedBalance) | `server/match.js:210-211` | [x] | [ ] | Now uses expectedBalance (3 USDC) for stricter validation |
+| 22 | H12 | Payout only waits for 1 confirmation | `server/payments.js:438-439` | [x] | [ ] | Changed to `tx.wait(3)` for better finality |
+| 23 | H13 | No nonce management in payout retries | `server/payments.js:132-177` | [x] | [ ] | Nonce fetched once before retries, passed explicitly to prevent duplicates |
 
 ### 2.4 Client Stability
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 24 | H8 | Client reconnection state not reset | `client/src/network.js:69-76` | [ ] | [ ] | Reset userId = null on failure |
+| 24 | H8 | Client reconnection state not reset | `client/src/network.js:69-76` | [x] | [ ] | Reset userId/sessionToken on reconnect failure and max attempts |
 
 ### 2.5 Database
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 25 | H9 | Database JSON parse without try-catch | `server/database.js:842, 916` | [ ] | [ ] | Wrap in try-catch |
-| 26 | H10 | Deferred queue lost on server restart | `server/database.js:61-65` | [ ] | [ ] | Persist to DB or document limitation |
+| 25 | H9 | Database JSON parse without try-catch | `server/database.js:842, 916` | [x] | [ ] | Added try-catch, returns null data on parse failure with error log |
+| 26 | H10 | Deferred queue lost on server restart | `server/database.js:61-65` | [x] | [ ] | Documented: only non-critical ops queued, critical ops fail fast |
 
 ### 2.6 Memory Leaks (Unbounded Collections)
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 27 | H14 | lowEthAlerts Set never bounded | `server/payments.js:612` | [ ] | [ ] | Add periodic cleanup |
-| 28 | H18 | stuckLobbyAlerts Set unbounded | `server/lobby.js:509` | [ ] | [ ] | Add periodic cleanup or max size |
-| 29 | H19 | matchTickErrors Map can leak | `server/match.js` | [ ] | [ ] | Ensure cleanup in all match end paths |
+| 27 | H14 | lowEthAlerts Set never bounded | `server/payments.js:612` | [x] | [ ] | Converted to Map with timestamps, hourly cleanup, 24h re-alert |
+| 28 | H18 | stuckLobbyAlerts Set unbounded | `server/lobby.js:509` | [x] | [ ] | Converted to Map with timestamps, hourly cleanup, 24h re-alert |
+| 29 | H19 | matchTickErrors Map can leak | `server/match.js` | [x] | [ ] | Added cleanup in both match end and voidMatch paths |
 
 ### 2.7 Security
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 30 | H15 | Session token stored in localStorage (XSS risk) | `client/src/ui.js:166` | [ ] | [ ] | Consider httpOnly cookies or accept risk |
+| 30 | H15 | Session token stored in localStorage (XSS risk) | `client/src/ui.js:166` | [x] | [ ] | Changed to sessionStorage (cleared on tab close, reduces attack window) |
 | - | ~~H16~~ | ~~No maximum WebSocket message size check~~ | ~~`server/index.js:297-318`~~ | N/A | N/A | **DUPLICATE of C16** - skip |
 
 ### 2.8 Documentation/Minor
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 31 | H17 | stuckLobbyAlerts Set not cleared on restart | `server/lobby.js:509` | [ ] | [ ] | Document duplicate alerts may occur |
+| 31 | H17 | stuckLobbyAlerts Set not cleared on restart | `server/lobby.js:509` | [x] | [ ] | Now uses Map with cleanup; re-alerts after 24h if still stuck |
 
-**Phase 2 Completion**: [ ] All 16 items done and tested (1 duplicate excluded)
+**Phase 2 Completion**: [x] All 16 items done (testing pending, 1 duplicate excluded)
 
 ---
 

@@ -36,6 +36,25 @@ const ACTIVITY_TYPES = new Set([
   AlertType.PLAYER_JOINED,
 ]);
 
+// Critical alert types that should be retried on failure
+const CRITICAL_TYPES = new Set([
+  AlertType.PAYOUT_FAILED,
+  AlertType.REFUND_FAILED,
+  AlertType.INSUFFICIENT_BALANCE,
+  AlertType.DATABASE_ERROR,
+]);
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000; // 1 second, doubles each retry
+
+/**
+ * Sleep for a given number of milliseconds
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * Send alert to appropriate Discord webhook
  * @param {string} type - Alert type from AlertType enum
@@ -43,6 +62,7 @@ const ACTIVITY_TYPES = new Set([
  */
 async function sendAlert(type, data = {}) {
   const isActivity = ACTIVITY_TYPES.has(type);
+  const isCritical = CRITICAL_TYPES.has(type);
   const webhookUrl = isActivity ? ACTIVITY_WEBHOOK : ALERTS_WEBHOOK;
 
   if (!webhookUrl) {
@@ -52,23 +72,49 @@ async function sendAlert(type, data = {}) {
 
   const embed = buildEmbed(type, data);
   const username = isActivity ? 'RPS Arena Activity' : 'RPS Arena Alerts';
+  const payload = JSON.stringify({ username, embeds: [embed] });
 
-  try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username,
-        embeds: [embed],
-      }),
-    });
+  const maxAttempts = isCritical ? MAX_RETRIES : 1;
+  let lastError = null;
 
-    if (!response.ok) {
-      console.error('[Alerts] Failed to send Discord alert:', response.status, await response.text());
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+
+      if (response.ok) {
+        if (attempt > 1) {
+          console.log(`[Alerts] Alert sent successfully on attempt ${attempt}:`, type);
+        }
+        return; // Success
+      }
+
+      // Rate limited - wait and retry
+      if (response.status === 429) {
+        const retryAfter = parseInt(response.headers.get('retry-after') || '5', 10) * 1000;
+        console.warn(`[Alerts] Rate limited, waiting ${retryAfter}ms before retry`);
+        await sleep(retryAfter);
+        continue;
+      }
+
+      lastError = `HTTP ${response.status}: ${await response.text()}`;
+    } catch (error) {
+      lastError = error.message;
     }
-  } catch (error) {
-    console.error('[Alerts] Error sending Discord alert:', error.message);
+
+    // If not last attempt, wait with exponential backoff
+    if (attempt < maxAttempts) {
+      const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      console.warn(`[Alerts] Attempt ${attempt}/${maxAttempts} failed for ${type}, retrying in ${delay}ms...`);
+      await sleep(delay);
+    }
   }
+
+  // All attempts failed
+  console.error(`[Alerts] Failed to send ${isCritical ? 'critical ' : ''}alert after ${maxAttempts} attempt(s):`, type, lastError);
 }
 
 /**

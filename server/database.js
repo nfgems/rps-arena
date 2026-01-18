@@ -22,6 +22,12 @@ const BUSY_RETRY_ATTEMPTS = 3;
 const BUSY_RETRY_DELAY_MS = 50; // Start with 50ms, doubles each retry
 
 // Queue for non-critical operations that failed and should be retried later
+// NOTE: This queue is in-memory only and will be lost on server restart.
+// This is acceptable because:
+// 1. Only NON-CRITICAL operations are queued (see CRITICAL_OPERATIONS below)
+// 2. Critical operations (user creation, matches, payouts) fail immediately
+// 3. Queued items are typically logging/metrics that can be lost without impact
+// 4. The queue processes every 5s, so data loss window is minimal
 const deferredOperations = [];
 const MAX_DEFERRED_QUEUE_SIZE = 100;
 const DEFERRED_PROCESS_INTERVAL_MS = 5000; // Process queue every 5 seconds
@@ -218,7 +224,7 @@ function withTransaction(operationName, fn) {
         sendAlert(AlertType.DATABASE_ERROR, {
           operation: `${operationName} (transaction)`,
           error: `${error.message} [${errorType}]`,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
       }
 
       return null;
@@ -316,7 +322,7 @@ function withDbErrorHandling(operationName, fn, defaultValue = null) {
         sendAlert(AlertType.DATABASE_ERROR, {
           operation: operationName,
           error: `${error.message} [${errorType}]`,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
       }
 
       // For non-critical operations with BUSY errors, queue for later
@@ -838,7 +844,14 @@ function getMatchEvents(matchId) {
     const stmt = database.prepare(`
       SELECT * FROM match_events WHERE match_id = ? ORDER BY tick, created_at
     `);
-    return stmt.all(matchId).map(e => ({ ...e, data: JSON.parse(e.data) }));
+    return stmt.all(matchId).map(e => {
+      try {
+        return { ...e, data: JSON.parse(e.data) };
+      } catch (parseErr) {
+        console.error(`[DB] Failed to parse match event data for event ${e.id}:`, parseErr.message);
+        return { ...e, data: null };
+      }
+    });
   }, []);
 }
 
@@ -912,7 +925,12 @@ function getInterruptedMatches() {
       ORDER BY ms.updated_at ASC
     `);
     return stmt.all().map(row => {
-      row.state = JSON.parse(row.state_json);
+      try {
+        row.state = JSON.parse(row.state_json);
+      } catch (parseErr) {
+        console.error(`[DB] Failed to parse match state for match ${row.match_id}:`, parseErr.message);
+        row.state = null;
+      }
       delete row.state_json;
       return row;
     });

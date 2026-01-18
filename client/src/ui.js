@@ -166,7 +166,7 @@ const UI = (function () {
       }
 
       // Store session token
-      localStorage.setItem('sessionToken', data.token);
+      sessionStorage.setItem('sessionToken', data.token);
 
       // Connect WebSocket
       await Network.connect(data.token);
@@ -190,7 +190,7 @@ const UI = (function () {
   function handleDisconnect() {
     Wallet.disconnect();
     Network.disconnect();
-    localStorage.removeItem('sessionToken');
+    sessionStorage.removeItem('sessionToken');
     showScreen('landing');
   }
 
@@ -604,14 +604,14 @@ const UI = (function () {
   // ============================================
 
   async function tryAutoReconnect() {
-    const token = localStorage.getItem('sessionToken');
+    const token = sessionStorage.getItem('sessionToken');
     if (token) {
       try {
         await Network.connect(token);
         showScreen('lobby');
       } catch (error) {
         console.log('Auto-reconnect failed, showing landing');
-        localStorage.removeItem('sessionToken');
+        sessionStorage.removeItem('sessionToken');
       }
     }
   }

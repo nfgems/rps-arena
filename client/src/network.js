@@ -77,8 +77,17 @@ const Network = (function () {
           reconnectAttempts++;
           setTimeout(() => {
             console.log(`Reconnecting... attempt ${reconnectAttempts}`);
-            connect(sessionToken).catch(console.error);
+            connect(sessionToken).catch((err) => {
+              console.error('Reconnection failed:', err);
+              // Reset userId on reconnection failure to prevent stale auth state
+              userId = null;
+            });
           }, 1000 * reconnectAttempts);
+        } else if (reconnectAttempts >= maxReconnectAttempts) {
+          // All reconnection attempts exhausted - reset state
+          console.log('Max reconnection attempts reached, resetting state');
+          userId = null;
+          sessionToken = null;
         }
 
         emit('disconnected', { code: event.code, reason: event.reason });

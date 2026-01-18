@@ -272,7 +272,7 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skip
         playerCount: newPlayerCount,
         username: user.username,
         walletAddress: user.wallet_address,
-      });
+      }).catch(err => console.error('Alert send failed:', err.message));
     }
 
     return { success: true, lobby };
@@ -293,12 +293,45 @@ function registerConnection(lobbyId, userId, ws) {
 }
 
 /**
- * Remove a WebSocket connection
+ * Remove a WebSocket connection and clean up player if no active match
+ *
+ * When a player disconnects before a match starts (status: waiting/ready),
+ * we remove them from the lobby to free up the slot. They can still request
+ * a refund via the timeout mechanism or by reconnecting.
  */
 function removeConnection(lobbyId, userId) {
   const lobby = activeLobbies.get(lobbyId);
-  if (lobby) {
-    lobby.connections.delete(userId);
+  if (!lobby) return;
+
+  lobby.connections.delete(userId);
+
+  // Only clean up player slot if lobby is not in an active match
+  // During in_progress, player stays in match even if disconnected
+  if (lobby.status === 'waiting' || lobby.status === 'ready') {
+    const playerIndex = lobby.players.findIndex(p => p.user_id === userId && !p.refunded_at);
+    if (playerIndex !== -1) {
+      console.log(`[DISCONNECT] Player ${userId} left lobby ${lobbyId} (status: ${lobby.status})`);
+
+      // Remove from in-memory lobby (DB record stays for refund eligibility)
+      lobby.players.splice(playerIndex, 1);
+
+      // Update lobby status based on remaining connected players
+      const remainingPlayers = lobby.players.filter(p => !p.refunded_at).length;
+
+      if (remainingPlayers === 0) {
+        // Lobby is now empty - reset it
+        lobby.status = 'empty';
+        lobby.first_join_at = null;
+        lobby.timeout_at = null;
+        db.resetLobby(lobbyId);
+        console.log(`[DISCONNECT] Lobby ${lobbyId} reset to empty`);
+      } else if (lobby.status === 'ready' && remainingPlayers < 3) {
+        // Was ready but now missing players
+        lobby.status = 'waiting';
+        db.updateLobbyStatus(lobbyId, 'waiting');
+        console.log(`[DISCONNECT] Lobby ${lobbyId} reverted to waiting (${remainingPlayers}/3)`);
+      }
+    }
   }
 }
 
@@ -376,7 +409,7 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
           lobbyId,
           playerAddress: p.wallet_address,
           error: result.error,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
       }
     }
 
@@ -435,7 +468,7 @@ async function processTreasuryRefund(lobbyId, reason) {
           lobbyId,
           playerAddress: p.wallet_address,
           error: result.error,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
       }
     }
 
@@ -483,7 +516,7 @@ function forceResetLobby(lobbyId) {
 
   // Close all WebSocket connections gracefully
   for (const [userId, ws] of lobby.connections) {
-    if (ws.readyState === 1) {
+    if (ws && ws.readyState === 1) {
       ws.close(4000, 'Lobby reset by admin');
     }
   }
@@ -521,7 +554,7 @@ function broadcastToLobby(lobbyId, message) {
   if (!lobby) return;
 
   for (const [userId, ws] of lobby.connections) {
-    if (ws.readyState === 1) { // WebSocket.OPEN
+    if (ws && ws.readyState === 1) { // WebSocket.OPEN
       ws.send(message);
     }
   }
@@ -557,8 +590,9 @@ function checkTimeouts() {
   }
 }
 
-// Track which lobbies we've already alerted about
-const stuckLobbyAlerts = new Set();
+// Track which lobbies we've already alerted about (Map: lobbyId -> timestamp)
+const stuckLobbyAlerts = new Map();
+const STUCK_ALERT_RENOTIFY_MS = 24 * 60 * 60 * 1000; // Re-alert after 24 hours if still stuck
 
 /**
  * Check for lobbies stuck in waiting or in_progress for too long (2+ hours)
@@ -575,9 +609,13 @@ function checkStuckLobbies() {
       const firstJoinTime = new Date(lobby.first_join_at).getTime();
       const duration = now - firstJoinTime;
 
-      if (duration >= STUCK_THRESHOLD_MS && !stuckLobbyAlerts.has(id)) {
-        // Mark as alerted to avoid spam
-        stuckLobbyAlerts.add(id);
+      const lastAlertTime = stuckLobbyAlerts.get(id);
+      const shouldAlert = duration >= STUCK_THRESHOLD_MS &&
+        (!lastAlertTime || (now - lastAlertTime) >= STUCK_ALERT_RENOTIFY_MS);
+
+      if (shouldAlert) {
+        // Mark as alerted with timestamp
+        stuckLobbyAlerts.set(id, now);
 
         const hours = Math.floor(duration / (60 * 60 * 1000));
         const minutes = Math.floor((duration % (60 * 60 * 1000)) / (60 * 1000));
@@ -588,11 +626,22 @@ function checkStuckLobbies() {
           playerCount: lobby.players.length,
           duration: `${hours}h ${minutes}m`,
           depositAddress: lobby.deposit_address,
-        });
+        }).catch(err => console.error('Alert send failed:', err.message));
       }
     } else {
       // Clear alert tracking when lobby resets
       stuckLobbyAlerts.delete(id);
+    }
+  }
+}
+
+/**
+ * Cleanup stale entries from stuckLobbyAlerts (lobbies no longer active)
+ */
+function cleanupStuckLobbyAlerts() {
+  for (const lobbyId of stuckLobbyAlerts.keys()) {
+    if (!activeLobbies.has(lobbyId)) {
+      stuckLobbyAlerts.delete(lobbyId);
     }
   }
 }
@@ -602,6 +651,9 @@ setInterval(checkTimeouts, 10000);
 
 // Run stuck lobby checker every 5 minutes
 setInterval(checkStuckLobbies, 5 * 60 * 1000);
+
+// Cleanup stale stuck lobby alerts every hour
+setInterval(cleanupStuckLobbyAlerts, 60 * 60 * 1000);
 
 // ============================================
 // Exports

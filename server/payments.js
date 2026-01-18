@@ -171,7 +171,7 @@ async function withRetry(fn, operationName, maxRetries = MAX_RETRIES) {
   sendAlert(AlertType.RPC_ERROR, {
     operation: operationName,
     error: lastError?.message || 'Unknown error after all retries',
-  });
+  }).catch(err => console.error('Alert send failed:', err.message));
 
   throw lastError;
 }
@@ -422,9 +422,10 @@ async function verifyPayment(txHash, expectedRecipient, expectedSender, expected
  * @param {ethers.Wallet} senderWallet - Wallet to send from (with provider)
  * @param {string} recipientAddress - Recipient address
  * @param {number} amount - Amount in USDC units (with decimals)
+ * @param {number} nonce - Explicit nonce to use for the transaction
  * @returns {Object} { success, txHash, error, errorType }
  */
-async function sendUsdcInternal(senderWallet, recipientAddress, amount) {
+async function sendUsdcInternal(senderWallet, recipientAddress, amount, nonce) {
   const usdcAddress = process.env.USDC_CONTRACT_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
   const usdc = new ethers.Contract(usdcAddress, USDC_ABI, senderWallet);
 
@@ -434,9 +435,9 @@ async function sendUsdcInternal(senderWallet, recipientAddress, amount) {
     return { success: false, error: 'Insufficient USDC balance', errorType: 'permanent' };
   }
 
-  // Send transaction
-  const tx = await usdc.transfer(recipientAddress, amount);
-  const receipt = await tx.wait();
+  // Send transaction with explicit nonce and wait for 3 confirmations for better finality
+  const tx = await usdc.transfer(recipientAddress, amount, { nonce });
+  const receipt = await tx.wait(3);
 
   if (receipt.status !== 1) {
     return { success: false, error: 'Transaction failed on-chain', errorType: 'permanent' };
@@ -447,6 +448,7 @@ async function sendUsdcInternal(senderWallet, recipientAddress, amount) {
 
 /**
  * Send USDC from a wallet with retry logic for transient errors
+ * Uses explicit nonce management to prevent duplicate transactions on retry
  * @param {ethers.Wallet} senderWallet - Wallet to send from (with provider)
  * @param {string} recipientAddress - Recipient address
  * @param {number} amount - Amount in USDC units (with decimals)
@@ -454,8 +456,11 @@ async function sendUsdcInternal(senderWallet, recipientAddress, amount) {
  */
 async function sendUsdc(senderWallet, recipientAddress, amount) {
   try {
+    // Get nonce once before retries to prevent duplicate transactions
+    const nonce = await senderWallet.getNonce();
+
     return await withRetry(
-      () => sendUsdcInternal(senderWallet, recipientAddress, amount),
+      () => sendUsdcInternal(senderWallet, recipientAddress, amount, nonce),
       `sendUsdc(${recipientAddress.slice(0, 8)}...)`
     );
   } catch (error) {
@@ -609,7 +614,9 @@ async function getEthBalance(address) {
 }
 
 // Track which wallets we've already alerted about (to avoid spam)
-const lowEthAlerts = new Set();
+// Map of alertKey -> timestamp for periodic cleanup and re-alerting
+const lowEthAlerts = new Map();
+const LOW_ETH_ALERT_EXPIRY_MS = 24 * 60 * 60 * 1000; // Re-alert after 24 hours
 
 /**
  * Check if wallet has low ETH and send alert if needed
@@ -624,10 +631,12 @@ async function checkLowEth(walletAddress, walletType, lobbyId = null) {
 
     if (balance < LOW_ETH_THRESHOLD) {
       const alertKey = `${walletType}-${walletAddress}`;
+      const lastAlertTime = lowEthAlerts.get(alertKey);
+      const now = Date.now();
 
-      // Only alert once per wallet until it's refilled
-      if (!lowEthAlerts.has(alertKey)) {
-        lowEthAlerts.add(alertKey);
+      // Alert if never alerted or last alert expired (allows re-alerting after 24h)
+      if (!lastAlertTime || (now - lastAlertTime) > LOW_ETH_ALERT_EXPIRY_MS) {
+        lowEthAlerts.set(alertKey, now);
 
         const formattedBalance = ethers.formatEther(balance);
 
@@ -636,12 +645,12 @@ async function checkLowEth(walletAddress, walletType, lobbyId = null) {
             lobbyId,
             balance: `${formattedBalance} ETH`,
             walletAddress,
-          });
+          }).catch(err => console.error('Alert send failed:', err.message));
         } else {
           sendAlert(AlertType.LOW_ETH_TREASURY, {
             balance: `${formattedBalance} ETH`,
             walletAddress,
-          });
+          }).catch(err => console.error('Alert send failed:', err.message));
         }
 
         console.warn(`[Payments] Low ETH warning for ${walletType} wallet ${walletAddress}: ${formattedBalance} ETH`);
@@ -655,6 +664,22 @@ async function checkLowEth(walletAddress, walletType, lobbyId = null) {
     console.error('Low ETH check error:', error);
   }
 }
+
+/**
+ * Clean up expired lowEthAlerts entries
+ * Called periodically to prevent unbounded Map growth
+ */
+function cleanupLowEthAlerts() {
+  const now = Date.now();
+  for (const [key, timestamp] of lowEthAlerts) {
+    if (now - timestamp > LOW_ETH_ALERT_EXPIRY_MS) {
+      lowEthAlerts.delete(key);
+    }
+  }
+}
+
+// Clean up expired alerts every hour
+setInterval(cleanupLowEthAlerts, 60 * 60 * 1000);
 
 // ============================================
 // Exports

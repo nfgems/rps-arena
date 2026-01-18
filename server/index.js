@@ -520,9 +520,26 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
               sendAlert(AlertType.INSUFFICIENT_BALANCE, {
                 lobbyId,
                 balance: error.balance || 'unknown',
-              });
+              }).catch(alertErr => console.error('Alert send failed:', alertErr));
               await lobby.processTreasuryRefund(lobbyId, 'insufficient_lobby_balance');
               broadcastLobbyList();
+            } else {
+              // Catch-all: Reset lobby status on any match start error to prevent stuck lobbies
+              console.error(`[MATCH_START] Resetting lobby ${lobbyId} due to match start failure:`, error.message);
+              sendAlert(AlertType.DATABASE_ERROR, {
+                operation: 'match_start',
+                lobbyId,
+                error: error.message,
+              }).catch(alertErr => console.error('Alert send failed:', alertErr));
+              try {
+                await lobby.processTreasuryRefund(lobbyId, 'match_start_failed');
+                broadcastLobbyList();
+              } catch (refundErr) {
+                console.error(`[MATCH_START] Failed to refund lobby ${lobbyId}:`, refundErr);
+                // Last resort: force reset the lobby to prevent it being stuck
+                lobby.forceResetLobby(lobbyId);
+                broadcastLobbyList();
+              }
             }
           }
         }, 100); // Small delay to ensure all clients received lobby update
@@ -654,7 +671,8 @@ async function initialize() {
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
   // Send startup alert (helps detect crashes/restarts)
-  sendAlert(AlertType.SERVER_START, { port: PUBLIC_PORT });
+  sendAlert(AlertType.SERVER_START, { port: PUBLIC_PORT })
+    .catch(err => console.error('Alert send failed:', err.message));
 }
 
 // Handle graceful shutdown
