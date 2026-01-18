@@ -49,10 +49,29 @@ const UI = (function () {
     // Set up event listeners
     setupEventListeners();
 
+    // Clean up resources on page unload
+    window.addEventListener('beforeunload', handlePageUnload);
+
     // Check dev mode
     checkDevMode();
 
     console.log('UI initialized');
+  }
+
+  /**
+   * Clean up resources when page is unloading
+   */
+  function handlePageUnload() {
+    stopGameLoop();
+    if (typeof Renderer !== 'undefined' && Renderer.destroy) {
+      Renderer.destroy();
+    }
+    if (typeof Input !== 'undefined' && Input.destroy) {
+      Input.destroy();
+    }
+    if (typeof Interpolation !== 'undefined' && Interpolation.destroy) {
+      Interpolation.destroy();
+    }
   }
 
   /**
@@ -606,6 +625,12 @@ const UI = (function () {
   async function tryAutoReconnect() {
     const token = sessionStorage.getItem('sessionToken');
     if (token) {
+      // Also verify wallet is still connected before attempting reconnect
+      if (typeof Wallet !== 'undefined' && !Wallet.isConnected()) {
+        console.log('Auto-reconnect skipped: wallet not connected');
+        sessionStorage.removeItem('sessionToken');
+        return;
+      }
       try {
         await Network.connect(token);
         showScreen('lobby');

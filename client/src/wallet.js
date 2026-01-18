@@ -66,7 +66,9 @@ const Wallet = (function () {
 
       connected = true;
 
-      // Listen for account changes
+      // Listen for account changes (remove first to prevent accumulation)
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
       window.ethereum.on('accountsChanged', handleAccountsChanged);
       window.ethereum.on('chainChanged', handleChainChanged);
 

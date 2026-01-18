@@ -60,8 +60,43 @@ function initializeApp() {
  */
 window.addEventListener('error', (event) => {
   console.error('Global error:', event.error);
+  showErrorToUser('An unexpected error occurred. Please refresh the page if the game becomes unresponsive.');
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
+  showErrorToUser('A connection or processing error occurred. Please check your connection and try again.');
 });
+
+/**
+ * Show user-friendly error notification
+ */
+function showErrorToUser(message) {
+  // Avoid spamming errors - only show one at a time
+  if (document.querySelector('.global-error-toast')) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'global-error-toast';
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #dc3545;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 10000;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Auto-dismiss after 5 seconds
+  setTimeout(() => {
+    toast.remove();
+  }, 5000);
+}

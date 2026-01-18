@@ -21,6 +21,7 @@ const AlertType = {
   LOW_ETH_TREASURY: 'low_eth_treasury',
   RPC_ERROR: 'rpc_error',
   DATABASE_ERROR: 'database_error',
+  GAME_LOOP_ERROR: 'game_loop_error',
   MATCH_RECOVERED: 'match_recovered',
 
   // Activity notifications (go to activity channel)
@@ -42,6 +43,7 @@ const CRITICAL_TYPES = new Set([
   AlertType.REFUND_FAILED,
   AlertType.INSUFFICIENT_BALANCE,
   AlertType.DATABASE_ERROR,
+  AlertType.GAME_LOOP_ERROR,
 ]);
 
 // Retry configuration
@@ -251,6 +253,22 @@ function buildEmbed(type, data) {
         fields: [
           { name: 'Operation', value: data.operation || 'unknown', inline: true },
           { name: 'Error', value: (data.error || 'Unknown error').slice(0, 1000), inline: false },
+        ],
+        timestamp,
+      };
+
+    case AlertType.GAME_LOOP_ERROR:
+      return {
+        title: '🚨 Game Loop Error',
+        description: data.stalled ? 'Game loop stalled and was terminated.' : 'Game loop encountered critical errors.',
+        color: 0xff0000,
+        fields: [
+          { name: 'Match ID', value: String(data.matchId || 'unknown'), inline: true },
+          { name: 'Tick', value: String(data.tick || 'unknown'), inline: true },
+          { name: 'Type', value: data.stalled ? 'Stalled' : (data.errorType || 'Tick failure'), inline: true },
+          ...(data.staleDuration ? [{ name: 'Stale Duration', value: `${data.staleDuration}ms (max ${data.maxAllowed}ms)`, inline: true }] : []),
+          ...(data.consecutiveErrors ? [{ name: 'Consecutive Errors', value: String(data.consecutiveErrors), inline: true }] : []),
+          ...(data.error ? [{ name: 'Error', value: String(data.error).slice(0, 500), inline: false }] : []),
         ],
         timestamp,
       };

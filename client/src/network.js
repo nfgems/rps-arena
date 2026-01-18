@@ -18,6 +18,9 @@ const Network = (function () {
   // Message handlers
   const handlers = new Map();
 
+  // Connection timeout constant
+  const CONNECTION_TIMEOUT_MS = 10000; // 10 seconds
+
   /**
    * Connect to WebSocket server
    */
@@ -30,7 +33,17 @@ const Network = (function () {
 
       ws = new WebSocket(wsUrl);
 
+      // Connection timeout - reject if not connected within 10s
+      const connectionTimeout = setTimeout(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+          console.error('WebSocket connection timeout after 10s');
+          ws.close();
+          reject(new Error('Connection timeout - server did not respond within 10 seconds'));
+        }
+      }, CONNECTION_TIMEOUT_MS);
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         console.log('WebSocket connected');
         connected = true;
         reconnectAttempts = 0;
@@ -94,6 +107,7 @@ const Network = (function () {
       };
 
       ws.onerror = (error) => {
+        clearTimeout(connectionTimeout);
         console.error('WebSocket error:', error);
         reject(error);
       };

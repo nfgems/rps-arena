@@ -132,38 +132,38 @@ These issues can cause crashes, data loss, or security vulnerabilities. **Do not
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 32 | M1 | resetLobbyWithPlayers deletes refunded players | `server/database.js:1123-1139` | [ ] | [ ] | Modify DELETE to keep refunded records |
-| 33 | M2 | txHashExists race condition | `server/database.js:686-689` | [ ] | [ ] | Rely on UNIQUE constraint, handle error |
-| 34 | M9 | treasury_balance_before wrong type (TEXT vs REAL) | `database/schema.sql:103` | [ ] | [ ] | Requires migration |
-| 35 | M15 | refund_reason schema constraint incomplete | `database/schema.sql:42` | [ ] | [ ] | Add missing values to CHECK |
+| 32 | M1 | resetLobbyWithPlayers deletes refunded players | `server/database.js:1123-1139` | [x] | [ ] | Added WHERE refund_tx_hash IS NULL to both resetLobbyWithPlayers and endMatchWithLobbyReset |
+| 33 | M2 | txHashExists race condition | `server/database.js:686-689` | [x] | [ ] | addLobbyPlayer now catches UNIQUE constraint violation, returns DUPLICATE_TX_HASH error |
+| 34 | M9 | treasury_balance_before wrong type (TEXT vs REAL) | `database/schema.sql:103` | [x] | [ ] | Changed to REAL; SQLite type affinity handles existing TEXT values |
+| 35 | M15 | refund_reason schema constraint incomplete | `database/schema.sql:42` | [x] | [ ] | Added: insufficient_lobby_balance, match_start_failed, game_loop_error, game_loop_stalled |
 
 ### 3.2 Client Issues
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 36 | M3 | Client wallet event listeners accumulate | `client/src/wallet.js:61-62` | [ ] | [ ] | Remove before adding |
-| 37 | M4 | Client game loop not cleaned on page unload | `client/src/ui.js:524-580` | [ ] | [ ] | Add beforeunload handler |
+| 36 | M3 | Client wallet event listeners accumulate | `client/src/wallet.js:61-62` | [x] | [ ] | Added removeListener() calls before adding new listeners |
+| 37 | M4 | Client game loop not cleaned on page unload | `client/src/ui.js:524-580` | [x] | [ ] | Added beforeunload handler that stops game loop and calls destroy() methods |
 | - | ~~M5~~ | ~~Missing destroy() calls after match end~~ | ~~`client/src/ui.js:337-359`~~ | N/A | N/A | **DUPLICATE of C14** - skip |
-| 38 | M16 | Auto-reconnect no wallet state check | `client/src/ui.js:586-597` | [ ] | [ ] | Also verify Wallet.isConnected() |
+| 38 | M16 | Auto-reconnect no wallet state check | `client/src/ui.js:586-597` | [x] | [ ] | Added Wallet.isConnected() check before reconnect attempt |
 
 ### 3.3 Server Logic
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 39 | M6 | Snapshot counter logic error (15Hz vs 20Hz) | `server/match.js:596-601` | [ ] | [ ] | Fix fractional increment |
-| 40 | M8 | Amount tolerance too high on USDC transfers (1%) | `server/payments.js:27, 388-396` | [ ] | [ ] | Reduce to 0% or 0.1% |
-| 41 | M10 | Game loop error uses wrong alert type | `server/match.js:464, 939` | [ ] | [ ] | Add GAME_LOOP_ERROR type |
-| 42 | M11 | Health monitor stall detection delay (7s) | `server/match.js:924-958` | [ ] | [ ] | Reduce check interval |
-| 43 | M14 | No input validation on bot endpoints | `server/index.js:132-164` | [ ] | [ ] | Add isValidLobbyId() check |
+| 39 | M6 | Snapshot counter logic error (15Hz vs 20Hz) | `server/match.js:596-601` | [x] | [ ] | Fixed with tick-rate agnostic fractional accumulation (TICK_RATE / 20) |
+| 40 | M8 | Amount tolerance too high on USDC transfers (1%) | `server/payments.js:27, 388-396` | [x] | [ ] | Changed to 0% (exact match) - USDC has no gas-induced variations |
+| 41 | M10 | Game loop error uses wrong alert type | `server/match.js:464, 939` | [x] | [ ] | Added GAME_LOOP_ERROR to AlertType, CRITICAL_TYPES, buildEmbed; updated both usages |
+| 42 | M11 | Health monitor stall detection delay (7s) | `server/match.js:924-958` | [x] | [ ] | Reduced HEALTH_CHECK_INTERVAL from 5s to 2s (worst-case: 7s→4s) |
+| 43 | M14 | No input validation on bot endpoints | `server/index.js:132-164` | [x] | [ ] | Added protocol.isValidLobbyId() to /api/bot/add, /api/bot/fill, /api/dev/reset |
 
 ### 3.4 Debug/Logging (May be covered by Phase 3.1 of Production Checklist)
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 44 | M12 | Physics debug logs still active | `server/physics.js:174-260` | [ ] | [ ] | Remove or gate behind DEBUG |
+| 44 | M12 | Physics debug logs still active | `server/physics.js:174-260` | [x] | [ ] | Gated behind DEBUG_PHYSICS env var (default: false) |
 | - | ~~M13~~ | ~~sleepSync uses CPU-intensive busy wait~~ | ~~`server/database.js:48-52`~~ | N/A | N/A | **DUPLICATE of C17** - skip |
 
-**Phase 3 Completion**: [ ] All 13 items done and tested (2 duplicates excluded)
+**Phase 3 Completion**: [x] All 13 items done (testing pending)
 
 ---
 
@@ -171,15 +171,15 @@ These issues can cause crashes, data loss, or security vulnerabilities. **Do not
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 45 | L1 | WebSocket connection no timeout | `client/src/network.js:24-86` | [ ] | [ ] | Add 10s timeout |
-| 46 | L2 | Global error handlers only log | `client/src/main.js:61-67` | [ ] | [ ] | Show user-friendly message |
-| 47 | L3 | Input handler silent on zero canvas | `client/src/input.js:59-61` | [ ] | [ ] | Log warning or retry |
-| 48 | L4 | Stuck lobby alert not reset on activity | `server/lobby.js:541-544` | [ ] | [ ] | Clear from Set when player joins |
-| 49 | L5 | Ping interval may leak on init error | `server/index.js:290-295` | [ ] | [ ] | Store and clear in all error paths |
-| 50 | L6 | Old payout records never cleaned | `server/database.js` | [ ] | [ ] | Add cleanup for 90+ day records |
-| 51 | L7 | Match debug logs heavy with 2 players | `server/match.js:541-571` | [ ] | [ ] | Include in debug log removal |
+| 45 | L1 | WebSocket connection no timeout | `client/src/network.js:24-86` | [x] | [ ] | Added 10s connection timeout with proper cleanup on error |
+| 46 | L2 | Global error handlers only log | `client/src/main.js:61-67` | [x] | [ ] | Added toast notification for user-friendly error messages |
+| 47 | L3 | Input handler silent on zero canvas | `client/src/input.js:59-61` | [x] | [ ] | Changed from debug log to warning with helpful message |
+| 48 | L4 | Stuck lobby alert not reset on activity | `server/lobby.js:541-544` | [x] | [ ] | Clear stuckLobbyAlerts on successful player join |
+| 49 | L5 | Ping interval may leak on init error | `server/index.js:290-295` | [x] | [ ] | Added clearInterval in ws error handler |
+| 50 | L6 | Old payout records never cleaned | `server/database.js` | [x] | [ ] | Added cleanupOldPayoutRecords() with hourly execution, keeps failed payouts for audit |
+| 51 | L7 | Match debug logs heavy with 2 players | `server/match.js:541-571` | [x] | [ ] | Gated behind DEBUG_MATCH env var (default: false) |
 
-**Phase 4 Completion**: [ ] All 7 items done and tested
+**Phase 4 Completion**: [x] All 7 items done (testing pending)
 
 ---
 
@@ -272,10 +272,10 @@ After completing fixes, run these tests:
 |-------|-------|------------|------------|------|-----------|
 | Phase 0 (Blockers) | 8 | 0 | 8 | 8 | 0 |
 | Phase 1 (Critical) | 7 | 0 | 7 | 7 | 0 |
-| Phase 2 (High) | 17 | 1 (H16=C16) | 16 | 0 | 16 |
-| Phase 3 (Medium) | 15 | 2 (M5=C14, M13=C17) | 13 | 0 | 13 |
-| Phase 4 (Low) | 7 | 0 | 7 | 0 | 7 |
-| **TOTAL** | **54** | **3** | **51** | **15** | **36** |
+| Phase 2 (High) | 17 | 1 (H16=C16) | 16 | 16 | 0 |
+| Phase 3 (Medium) | 15 | 2 (M5=C14, M13=C17) | 13 | 13 | 0 |
+| Phase 4 (Low) | 7 | 0 | 7 | 7 | 0 |
+| **TOTAL** | **54** | **3** | **51** | **51** | **0** |
 
 *Duplicates are marked with strikethrough in the checklist above*
 

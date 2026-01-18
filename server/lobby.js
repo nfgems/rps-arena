@@ -241,6 +241,14 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skip
     const user = db.getUserById(userId);
     const lobbyPlayer = db.addLobbyPlayer(lobbyId, userId, paymentTxHash);
 
+    // Handle duplicate tx hash (race condition safe via UNIQUE constraint)
+    if (lobbyPlayer?.error === 'DUPLICATE_TX_HASH') {
+      return { success: false, error: 'DUPLICATE_TX_HASH' };
+    }
+    if (!lobbyPlayer) {
+      return { success: false, error: 'DATABASE_ERROR' };
+    }
+
     lobby.players.push({
       ...lobbyPlayer,
       wallet_address: user.wallet_address,
@@ -264,6 +272,9 @@ async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skip
     }
 
     console.log(`Player ${userId} joined lobby ${lobbyId} (${newPlayerCount}/3)`);
+
+    // Clear stuck lobby alert since there's activity
+    stuckLobbyAlerts.delete(lobbyId);
 
     // Send activity alert (only for paid joins on production port)
     if (!skipPayment) {

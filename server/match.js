@@ -11,6 +11,9 @@ const payments = require('./payments');
 const lobby = require('./lobby');
 const { sendAlert, AlertType } = require('./alerts');
 
+// Debug mode - set to true for verbose logging during development
+const DEBUG_MATCH = process.env.DEBUG_MATCH === 'true' || false;
+
 // Active matches (in-memory for real-time game state)
 const activeMatches = new Map();
 
@@ -21,7 +24,7 @@ const matchTickErrors = new Map();
 let healthMonitorInterval = null;
 
 // How often to check game loop health (ms)
-const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
+const HEALTH_CHECK_INTERVAL = 2000; // 2 seconds (reduced from 5s for faster stall detection)
 
 // Maximum time since last tick before considering game loop stalled (ms)
 const MAX_TICK_STALENESS = 2000; // 2 seconds (60 ticks at 30Hz)
@@ -469,13 +472,13 @@ function startGameLoop(match) {
         console.error(`[GAME_LOOP] Match ${match.id}: Voiding match due to ${errorType === 'critical' ? 'critical error' : 'consecutive tick failures'}`);
 
         // Send alert for game loop failure
-        sendAlert(AlertType.DATABASE_ERROR, {
-          context: 'Game loop tick failure',
+        sendAlert(AlertType.GAME_LOOP_ERROR, {
           matchId: match.id,
           tick: match.tick,
           error: error.message,
           consecutiveErrors: errorState.count,
           errorType,
+          stalled: false,
         }).catch(err => console.error('Alert send failed:', err.message));
 
         // Void the match and refund players
@@ -548,7 +551,7 @@ function processTick(match) {
 
   // 4. Process collisions
   // Debug: Log player states EVERY tick when 2 remain (throttled to every 30 ticks = 1 second)
-  if (stillAlive.length === 2) {
+  if (DEBUG_MATCH && stillAlive.length === 2) {
     const p1 = stillAlive[0];
     const p2 = stillAlive[1];
     const dx = p1.x - p2.x;
@@ -563,12 +566,12 @@ function processTick(match) {
   const collisionResult = physics.processCollisions(match.players);
 
   // Debug: Log collision result when 2 players remain
-  if (stillAlive.length === 2 && collisionResult.type !== 'none') {
+  if (DEBUG_MATCH && stillAlive.length === 2 && collisionResult.type !== 'none') {
     console.log(`[DEBUG] Collision result with 2 alive: type=${collisionResult.type}, eliminations=${JSON.stringify(collisionResult.eliminations)}`);
   }
 
   // Debug: Log when only 2 players remain and they're close
-  if (stillAlive.length === 2) {
+  if (DEBUG_MATCH && stillAlive.length === 2) {
     const p1 = stillAlive[0];
     const p2 = stillAlive[1];
     const dx = p1.x - p2.x;
@@ -604,10 +607,13 @@ function processTick(match) {
     return;
   }
 
-  // 6. Broadcast snapshot (at 20 Hz = every ~1.5 ticks)
+  // 6. Broadcast snapshot at 20 Hz (tick-rate agnostic)
+  // ticksPerSnapshot = TICK_RATE / 20 (e.g., 30Hz -> 1.5, 60Hz -> 3)
+  const SNAPSHOT_RATE = 20;
+  const ticksPerSnapshot = physics.TICK_RATE / SNAPSHOT_RATE;
   match.snapshotCounter++;
-  if (match.snapshotCounter >= 1.5) {
-    match.snapshotCounter = 0;
+  if (match.snapshotCounter >= ticksPerSnapshot) {
+    match.snapshotCounter -= ticksPerSnapshot; // Preserve fractional remainder
     const snapshot = protocol.createSnapshot(match.tick, match.players);
     broadcastToMatch(match, snapshot);
   }
@@ -959,12 +965,12 @@ function startHealthMonitor() {
         console.error(`[HEALTH_MONITOR] Match ${matchId}: Game loop stalled! Last tick was ${timeSinceLastTick}ms ago (tick ${match.tick})`);
 
         // Send alert for stalled game loop
-        sendAlert(AlertType.DATABASE_ERROR, {
-          context: 'Game loop stalled',
+        sendAlert(AlertType.GAME_LOOP_ERROR, {
           matchId,
           tick: match.tick,
           staleDuration: timeSinceLastTick,
           maxAllowed: MAX_TICK_STALENESS,
+          stalled: true,
         }).catch(err => console.error('Alert send failed:', err.message));
 
         // Clear the potentially dead interval

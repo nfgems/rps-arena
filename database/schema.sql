@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS lobby_players (
   payment_tx_hash TEXT NOT NULL,
   payment_confirmed_at TEXT NOT NULL,
   refund_tx_hash TEXT,
-  refund_reason TEXT CHECK (refund_reason IN ('timeout', 'server_crash', 'triple_disconnect', 'double_disconnect', 'payout_failed')),
+  refund_reason TEXT CHECK (refund_reason IN ('timeout', 'server_crash', 'triple_disconnect', 'double_disconnect', 'payout_failed', 'insufficient_lobby_balance', 'match_start_failed', 'game_loop_error', 'game_loop_stalled')),
   refunded_at TEXT,
   joined_at TEXT DEFAULT (datetime('now')),
   UNIQUE(lobby_id, user_id),
@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS match_events (
 );
 
 -- Payout attempts (for audit trail and failure tracking)
+-- Note: treasury_balance_before changed from TEXT to REAL (M9 fix)
+-- SQLite type affinity means existing TEXT values still work
 CREATE TABLE IF NOT EXISTS payout_attempts (
   id TEXT PRIMARY KEY,
   match_id TEXT REFERENCES matches(id) ON DELETE CASCADE,
@@ -100,7 +102,7 @@ CREATE TABLE IF NOT EXISTS payout_attempts (
   error_message TEXT,
   error_type TEXT,
   source_wallet TEXT NOT NULL CHECK (source_wallet IN ('lobby', 'treasury')),
-  treasury_balance_before TEXT,
+  treasury_balance_before REAL,
   created_at TEXT DEFAULT (datetime('now'))
 );
 

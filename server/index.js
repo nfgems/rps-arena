@@ -135,7 +135,12 @@ adminApp.post('/api/bot/add', async (req, res) => {
     return res.status(400).json({ success: false, error: 'lobbyId required' });
   }
 
-  const result = await bot.addBotToLobby(parseInt(lobbyId));
+  const parsedLobbyId = parseInt(lobbyId);
+  if (!protocol.isValidLobbyId(parsedLobbyId)) {
+    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-10)' });
+  }
+
+  const result = await bot.addBotToLobby(parsedLobbyId);
 
   if (result.success) {
     // Broadcast updated lobby list to both servers
@@ -153,7 +158,12 @@ adminApp.post('/api/bot/fill', async (req, res) => {
     return res.status(400).json({ success: false, error: 'lobbyId required' });
   }
 
-  const result = await bot.fillLobbyWithBots(parseInt(lobbyId));
+  const parsedLobbyId = parseInt(lobbyId);
+  if (!protocol.isValidLobbyId(parsedLobbyId)) {
+    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-10)' });
+  }
+
+  const result = await bot.fillLobbyWithBots(parsedLobbyId);
 
   if (result.success) {
     broadcastLobbyList();
@@ -172,7 +182,11 @@ adminApp.get('/api/bot/list', (req, res) => {
 // Reset lobby for testing
 adminApp.post('/api/dev/reset', async (req, res) => {
   const { lobbyId } = req.body;
-  const targetLobbyId = lobbyId || 1;
+  const targetLobbyId = lobbyId ? parseInt(lobbyId) : 1;
+
+  if (!protocol.isValidLobbyId(targetLobbyId)) {
+    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-10)' });
+  }
 
   try {
     // Remove all bots
@@ -242,6 +256,9 @@ setInterval(() => {
   if (rateLimitsRemoved > 0 || connectionCountsRemoved > 0) {
     console.log(`[CLEANUP] Removed ${rateLimitsRemoved} stale rate limits, ${connectionCountsRemoved} zero connection counts`);
   }
+
+  // Also cleanup old payout records (90+ days old successful payouts)
+  db.cleanupOldPayoutRecords(90);
 }, RATE_LIMIT_CLEANUP_INTERVAL_MS);
 
 function checkRateLimit(ip, messageType) {
@@ -377,6 +394,11 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
 
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
+      // Clear ping interval on error to prevent leaks (close handler may not fire in all cases)
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
     });
 
     // ============================================

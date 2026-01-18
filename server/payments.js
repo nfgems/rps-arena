@@ -24,7 +24,7 @@ const TREASURY_CUT = 600_000; // 0.6 USDC
 // Payment security constants
 const MIN_CONFIRMATIONS = 3; // Minimum block confirmations required
 const MAX_TX_AGE_MS = 60 * 60 * 1000; // 1 hour in milliseconds
-const AMOUNT_TOLERANCE_PERCENT = 1; // 1% tolerance for gas variations (not applicable to USDC transfers)
+const AMOUNT_TOLERANCE_PERCENT = 0; // Exact match required for USDC (ERC-20 transfers have no gas-induced variations)
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -385,15 +385,12 @@ async function verifyPayment(txHash, expectedRecipient, expectedSender, expected
       return { valid: false, error: 'Recipient mismatch' };
     }
 
-    // Verify amount with tolerance
+    // Verify amount (exact match required for USDC)
     const expectedBigInt = BigInt(expectedAmount);
     const actualBigInt = BigInt(actualAmount);
-    const toleranceAmount = expectedBigInt * BigInt(AMOUNT_TOLERANCE_PERCENT) / BigInt(100);
-    const minAcceptable = expectedBigInt - toleranceAmount;
-    const maxAcceptable = expectedBigInt + toleranceAmount;
 
-    if (actualBigInt < minAcceptable || actualBigInt > maxAcceptable) {
-      return { valid: false, error: `Amount mismatch: expected ${expectedAmount} (±${AMOUNT_TOLERANCE_PERCENT}%), got ${actualAmount}` };
+    if (actualBigInt !== expectedBigInt) {
+      return { valid: false, error: `Amount mismatch: expected ${expectedAmount}, got ${actualAmount}` };
     }
 
     return {

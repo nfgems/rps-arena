@@ -16,6 +16,9 @@ const BOUNCE_DISTANCE = 10;
 const LARGE_BOUNCE_DISTANCE = 25;
 const MAX_BOUNCE_ITERATIONS = 2;
 
+// Debug flag (set DEBUG_PHYSICS=true in environment to enable verbose logging)
+const DEBUG_PHYSICS = process.env.DEBUG_PHYSICS === 'true';
+
 // RPS win table: winner[attacker] = victim
 const BEATS = {
   rock: 'scissors',
@@ -172,7 +175,7 @@ function processCollisions(players) {
   const sameRolePairs = [];
 
   // Debug: Log when 2 players remain (only when close to reduce spam)
-  if (alive.length === 2) {
+  if (DEBUG_PHYSICS && alive.length === 2) {
     const p1 = alive[0];
     const p2 = alive[1];
     const d = Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
@@ -196,23 +199,25 @@ function processCollisions(players) {
       const sweptCollision = sweptCircleCollision(p1Prev, p1, p2Prev, p2);
 
       // Debug when players are close (within 100 pixels when only 2 alive)
-      if (dist < 100 && alive.length === 2) {
+      if (DEBUG_PHYSICS && dist < 100 && alive.length === 2) {
         console.log(`[DEBUG] Final 2 players: ${p1.role}(${p1.id.slice(-4)}) at (${p1.x.toFixed(1)},${p1.y.toFixed(1)}) prev=(${p1Prev.x.toFixed(1)},${p1Prev.y.toFixed(1)}) vs ${p2.role}(${p2.id.slice(-4)}) at (${p2.x.toFixed(1)},${p2.y.toFixed(1)}) prev=(${p2Prev.x.toFixed(1)},${p2Prev.y.toFixed(1)}), dist=${dist.toFixed(1)}, overlapping=${overlapping}, swept=${sweptCollision}, threshold=${PLAYER_RADIUS * 2}`);
       }
 
       // Use swept collision OR endpoint overlap
       if (overlapping || sweptCollision) {
         const loser = getRpsLoser(p1.role, p2.role);
-        console.log(`[DEBUG] COLLISION DETECTED (overlap=${overlapping}, swept=${sweptCollision}) at dist=${dist.toFixed(1)}: ${p1.role}(${p1.id.slice(-4)}) vs ${p2.role}(${p2.id.slice(-4)}), getRpsLoser=${loser}`);
+        if (DEBUG_PHYSICS) {
+          console.log(`[DEBUG] COLLISION DETECTED (overlap=${overlapping}, swept=${sweptCollision}) at dist=${dist.toFixed(1)}: ${p1.role}(${p1.id.slice(-4)}) vs ${p2.role}(${p2.id.slice(-4)}), getRpsLoser=${loser}`);
+        }
         if (loser === 1) {
-          console.log(`[DEBUG] -> ${p1.role} loses to ${p2.role}`);
+          if (DEBUG_PHYSICS) console.log(`[DEBUG] -> ${p1.role} loses to ${p2.role}`);
           eliminations.push({ winner: p2, loser: p1 });
         } else if (loser === 2) {
-          console.log(`[DEBUG] -> ${p2.role} loses to ${p1.role}`);
+          if (DEBUG_PHYSICS) console.log(`[DEBUG] -> ${p2.role} loses to ${p1.role}`);
           eliminations.push({ winner: p1, loser: p2 });
         } else {
           // Same role = bounce apart instead of overlapping
-          console.log(`[DEBUG] -> Same role collision (loser=0) - bouncing ${p1.role} vs ${p2.role}`);
+          if (DEBUG_PHYSICS) console.log(`[DEBUG] -> Same role collision (loser=0) - bouncing ${p1.role} vs ${p2.role}`);
           sameRolePairs.push([p1, p2]);
         }
       }
@@ -240,14 +245,16 @@ function processCollisions(players) {
 
   // Process all eliminations (even multiple simultaneous ones)
   const processedEliminations = [];
-  if (eliminations.length > 0) {
+  if (DEBUG_PHYSICS && eliminations.length > 0) {
     console.log(`[DEBUG] Processing ${eliminations.length} elimination(s)`);
   }
   for (const { winner, loser } of eliminations) {
-    console.log(`[DEBUG] Elimination candidate: ${winner.role}(${winner.id.slice(-4)}) beats ${loser.role}(${loser.id.slice(-4)}), loser.alive=${loser.alive}`);
+    if (DEBUG_PHYSICS) {
+      console.log(`[DEBUG] Elimination candidate: ${winner.role}(${winner.id.slice(-4)}) beats ${loser.role}(${loser.id.slice(-4)}), loser.alive=${loser.alive}`);
+    }
     // Only eliminate if loser is still alive (not already eliminated this tick)
     if (loser.alive) {
-      console.log(`[DEBUG] ELIMINATING ${loser.role}(${loser.id.slice(-4)})!`);
+      if (DEBUG_PHYSICS) console.log(`[DEBUG] ELIMINATING ${loser.role}(${loser.id.slice(-4)})!`);
       loser.alive = false;
       processedEliminations.push({
         winnerId: winner.id,
@@ -256,7 +263,7 @@ function processCollisions(players) {
         loserRole: loser.role,
       });
     } else {
-      console.log(`[DEBUG] Skipping elimination - loser already dead`);
+      if (DEBUG_PHYSICS) console.log(`[DEBUG] Skipping elimination - loser already dead`);
     }
   }
 

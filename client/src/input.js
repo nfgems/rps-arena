@@ -57,7 +57,7 @@ const Input = (function () {
 
     // Skip if canvas hasn't been laid out yet (would cause NaN/Infinity)
     if (rect.width === 0 || rect.height === 0) {
-      console.log('[DEBUG] Canvas rect is zero:', rect);
+      console.warn('[Input] Canvas has zero dimensions - mouse input ignored until canvas is properly sized. This may indicate a layout issue.');
       return;
     }
 

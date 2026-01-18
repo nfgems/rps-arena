@@ -644,7 +644,7 @@ function getLobbyPlayerCount(lobbyId) {
 // ============================================
 
 function addLobbyPlayer(lobbyId, userId, paymentTxHash) {
-  return withDbErrorHandling('addLobbyPlayer', () => {
+  try {
     const database = getDb();
     const id = uuid();
     const now = new Date().toISOString();
@@ -656,7 +656,15 @@ function addLobbyPlayer(lobbyId, userId, paymentTxHash) {
     stmt.run(id, lobbyId, userId, paymentTxHash, now);
 
     return { id, lobby_id: lobbyId, user_id: userId, payment_tx_hash: paymentTxHash };
-  }, null);
+  } catch (error) {
+    // Handle UNIQUE constraint violation on payment_tx_hash (race condition safe)
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' || error.message?.includes('UNIQUE constraint failed')) {
+      console.error(`[addLobbyPlayer] Duplicate tx hash rejected by constraint: ${paymentTxHash}`);
+      return { error: 'DUPLICATE_TX_HASH' };
+    }
+    console.error('[addLobbyPlayer] Database error:', error);
+    return null;
+  }
 }
 
 function getLobbyPlayers(lobbyId) {
@@ -1071,6 +1079,35 @@ function getFailedPayouts() {
   }, []);
 }
 
+/**
+ * Cleanup old payout records older than specified days
+ * Only deletes successful payouts - failed payouts are kept for audit
+ * @param {number} daysOld - Delete records older than this many days (default 90)
+ * @returns {{deleted: number}|null} Number of deleted records or null on error
+ */
+function cleanupOldPayoutRecords(daysOld = 90) {
+  return withDbErrorHandling('cleanupOldPayoutRecords', () => {
+    const database = getDb();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    const cutoffISO = cutoffDate.toISOString();
+
+    // Only delete successful payouts - keep failed ones for audit/debugging
+    const stmt = database.prepare(`
+      DELETE FROM payout_attempts
+      WHERE status = 'success'
+      AND created_at < ?
+    `);
+    const result = stmt.run(cutoffISO);
+
+    if (result.changes > 0) {
+      console.log(`[DB Cleanup] Deleted ${result.changes} payout records older than ${daysOld} days`);
+    }
+
+    return { deleted: result.changes };
+  }, null);
+}
+
 // ============================================
 // Transactional Operations (Multi-Step)
 // ============================================
@@ -1139,8 +1176,8 @@ function createMatchWithPlayers(lobbyId, rngSeed, players) {
  */
 function resetLobbyWithPlayers(lobbyId) {
   return withTransaction('resetLobbyWithPlayers', (database) => {
-    // Step 1: Clear all lobby players (those not refunded)
-    const clearStmt = database.prepare('DELETE FROM lobby_players WHERE lobby_id = ?');
+    // Step 1: Clear non-refunded lobby players (preserve refunded records for audit)
+    const clearStmt = database.prepare('DELETE FROM lobby_players WHERE lobby_id = ? AND refund_tx_hash IS NULL');
     clearStmt.run(lobbyId);
 
     // Step 2: Reset lobby state
@@ -1186,8 +1223,8 @@ function endMatchWithLobbyReset(matchId, winnerId, payoutAmount, payoutTxHash, l
       matchStmt.run(now, matchId);
     }
 
-    // Step 2: Clear lobby players
-    const clearStmt = database.prepare('DELETE FROM lobby_players WHERE lobby_id = ?');
+    // Step 2: Clear non-refunded lobby players (preserve refunded records for audit)
+    const clearStmt = database.prepare('DELETE FROM lobby_players WHERE lobby_id = ? AND refund_tx_hash IS NULL');
     clearStmt.run(lobbyId);
 
     // Step 3: Reset lobby for next match
@@ -1277,6 +1314,7 @@ module.exports = {
   updatePayoutAttempt,
   getPayoutAttempts,
   getFailedPayouts,
+  cleanupOldPayoutRecords,
 
   // Transactional Operations (atomic multi-step)
   withTransaction,
