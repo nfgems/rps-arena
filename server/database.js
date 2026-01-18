@@ -42,14 +42,13 @@ const CRITICAL_OPERATIONS = new Set([
 ]);
 
 /**
- * Sleep for a specified duration (synchronous busy-wait for better-sqlite3)
+ * Sleep for a specified duration without blocking the CPU
+ * Uses Atomics.wait() which properly sleeps without busy-waiting
  * @param {number} ms - Milliseconds to sleep
  */
+const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
 function sleepSync(ms) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // Busy wait - necessary for synchronous SQLite operations
-  }
+  Atomics.wait(sleepBuffer, 0, 0, ms);
 }
 
 /**

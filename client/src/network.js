@@ -46,7 +46,13 @@ const Network = (function () {
       };
 
       ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch (error) {
+          console.error('Failed to parse server message:', error);
+          return;
+        }
         handleMessage(message);
 
         // Resolve on WELCOME

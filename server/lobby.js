@@ -12,6 +12,9 @@ const { sendAlert, AlertType } = require('./alerts');
 // Active lobby data (in-memory for real-time updates)
 const activeLobbies = new Map();
 
+// Mutex locks for lobby operations (prevents race conditions)
+const lobbyLocks = new Map();
+
 // ============================================
 // Initialization
 // ============================================
@@ -136,6 +139,31 @@ function getPlayerLobby(userId) {
 }
 
 // ============================================
+// Mutex Helpers
+// ============================================
+
+/**
+ * Acquire a lock for a lobby (waits if already locked)
+ * @param {number} lobbyId - Lobby ID
+ * @returns {Promise<void>}
+ */
+async function acquireLobbyLock(lobbyId) {
+  while (lobbyLocks.get(lobbyId)) {
+    // Wait for lock to be released
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  lobbyLocks.set(lobbyId, true);
+}
+
+/**
+ * Release a lock for a lobby
+ * @param {number} lobbyId - Lobby ID
+ */
+function releaseLobbyLock(lobbyId) {
+  lobbyLocks.delete(lobbyId);
+}
+
+// ============================================
 // Join Flow
 // ============================================
 
@@ -151,98 +179,107 @@ function getPlayerLobby(userId) {
 async function joinLobby(userId, lobbyId, paymentTxHash, userWalletAddress, skipPayment = false) {
   const lobby = activeLobbies.get(lobbyId);
 
-  // Validation
+  // Validation (before lock - quick checks)
   if (!lobby) {
     return { success: false, error: 'LOBBY_NOT_FOUND' };
   }
 
-  if (lobby.status === 'in_progress') {
-    return { success: false, error: 'LOBBY_FULL' };
-  }
+  // Acquire lock for this lobby to prevent race conditions
+  await acquireLobbyLock(lobbyId);
 
-  const currentPlayerCount = lobby.players.filter(p => !p.refunded_at).length;
-  if (currentPlayerCount >= 3) {
-    return { success: false, error: 'LOBBY_FULL' };
-  }
-
-  // Check if user is already in a lobby
-  const existingLobby = getPlayerLobby(userId);
-  if (existingLobby) {
-    return { success: false, error: 'ALREADY_IN_LOBBY' };
-  }
-
-  // Check for duplicate tx hash (skip check for admin port fake tx hashes)
-  if (!skipPayment && db.txHashExists(paymentTxHash)) {
-    return { success: false, error: 'PAYMENT_NOT_CONFIRMED' }; // Duplicate
-  }
-
-  // Check timeout
-  if (lobby.timeout_at && new Date(lobby.timeout_at).getTime() < Date.now()) {
-    return { success: false, error: 'LOBBY_TIMEOUT' };
-  }
-
-  // Verify payment on blockchain (skip on admin port)
-  if (!skipPayment) {
-    const verification = await payments.verifyPayment(
-      paymentTxHash,
-      lobby.deposit_address,
-      userWalletAddress,
-      payments.BUY_IN_AMOUNT
-    );
-
-    if (!verification.valid) {
-      console.log('Payment verification failed:', verification.error);
-      return { success: false, error: 'PAYMENT_NOT_CONFIRMED' };
+  try {
+    // Re-check conditions after acquiring lock
+    if (lobby.status === 'in_progress') {
+      return { success: false, error: 'LOBBY_FULL' };
     }
-  } else {
-    console.log('ADMIN PORT: Skipping payment verification');
-  }
 
-  // Double-check lobby hasn't filled while we were verifying
-  const recheckCount = lobby.players.filter(p => !p.refunded_at).length;
-  if (recheckCount >= 3) {
-    return { success: false, error: 'LOBBY_FULL' };
-  }
+    const currentPlayerCount = lobby.players.filter(p => !p.refunded_at).length;
+    if (currentPlayerCount >= 3) {
+      return { success: false, error: 'LOBBY_FULL' };
+    }
 
-  // Add player to database and memory
-  const user = db.getUserById(userId);
-  const lobbyPlayer = db.addLobbyPlayer(lobbyId, userId, paymentTxHash);
+    // Check if user is already in a lobby
+    const existingLobby = getPlayerLobby(userId);
+    if (existingLobby) {
+      return { success: false, error: 'ALREADY_IN_LOBBY' };
+    }
 
-  lobby.players.push({
-    ...lobbyPlayer,
-    wallet_address: user.wallet_address,
-    username: user.username,
-  });
+    // Check for duplicate tx hash (skip check for admin port fake tx hashes)
+    if (!skipPayment && db.txHashExists(paymentTxHash)) {
+      return { success: false, error: 'PAYMENT_NOT_CONFIRMED' }; // Duplicate
+    }
 
-  // Update lobby state
-  if (lobby.status === 'empty') {
-    db.setLobbyFirstJoin(lobbyId);
-    const updatedLobby = db.getLobby(lobbyId);
-    lobby.status = 'waiting';
-    lobby.first_join_at = updatedLobby.first_join_at;
-    lobby.timeout_at = updatedLobby.timeout_at;
-  }
+    // Check timeout
+    if (lobby.timeout_at && new Date(lobby.timeout_at).getTime() < Date.now()) {
+      return { success: false, error: 'LOBBY_TIMEOUT' };
+    }
 
-  // Check if lobby is now full
-  const newPlayerCount = lobby.players.filter(p => !p.refunded_at).length;
-  if (newPlayerCount === 3) {
-    lobby.status = 'ready';
-    db.updateLobbyStatus(lobbyId, 'ready');
-  }
+    // Verify payment on blockchain (skip on admin port)
+    if (!skipPayment) {
+      const verification = await payments.verifyPayment(
+        paymentTxHash,
+        lobby.deposit_address,
+        userWalletAddress,
+        payments.BUY_IN_AMOUNT
+      );
 
-  console.log(`Player ${userId} joined lobby ${lobbyId} (${newPlayerCount}/3)`);
+      if (!verification.valid) {
+        console.log('Payment verification failed:', verification.error);
+        return { success: false, error: 'PAYMENT_NOT_CONFIRMED' };
+      }
+    } else {
+      console.log('ADMIN PORT: Skipping payment verification');
+    }
 
-  // Send activity alert (only for paid joins on production port)
-  if (!skipPayment) {
-    sendAlert(AlertType.PLAYER_JOINED, {
-      lobbyId,
-      playerCount: newPlayerCount,
+    // Final check - lobby hasn't filled (shouldn't happen with lock, but defensive)
+    const recheckCount = lobby.players.filter(p => !p.refunded_at).length;
+    if (recheckCount >= 3) {
+      return { success: false, error: 'LOBBY_FULL' };
+    }
+
+    // Add player to database and memory
+    const user = db.getUserById(userId);
+    const lobbyPlayer = db.addLobbyPlayer(lobbyId, userId, paymentTxHash);
+
+    lobby.players.push({
+      ...lobbyPlayer,
+      wallet_address: user.wallet_address,
       username: user.username,
-      walletAddress: user.wallet_address,
     });
-  }
 
-  return { success: true, lobby };
+    // Update lobby state
+    if (lobby.status === 'empty') {
+      db.setLobbyFirstJoin(lobbyId);
+      const updatedLobby = db.getLobby(lobbyId);
+      lobby.status = 'waiting';
+      lobby.first_join_at = updatedLobby.first_join_at;
+      lobby.timeout_at = updatedLobby.timeout_at;
+    }
+
+    // Check if lobby is now full
+    const newPlayerCount = lobby.players.filter(p => !p.refunded_at).length;
+    if (newPlayerCount === 3) {
+      lobby.status = 'ready';
+      db.updateLobbyStatus(lobbyId, 'ready');
+    }
+
+    console.log(`Player ${userId} joined lobby ${lobbyId} (${newPlayerCount}/3)`);
+
+    // Send activity alert (only for paid joins on production port)
+    if (!skipPayment) {
+      sendAlert(AlertType.PLAYER_JOINED, {
+        lobbyId,
+        playerCount: newPlayerCount,
+        username: user.username,
+        walletAddress: user.wallet_address,
+      });
+    }
+
+    return { success: true, lobby };
+  } finally {
+    // Always release the lock
+    releaseLobbyLock(lobbyId);
+  }
 }
 
 /**
@@ -282,66 +319,74 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
     return { success: false, error: 'LOBBY_NOT_FOUND' };
   }
 
-  // Verify user is in this lobby
-  const player = lobby.players.find(p => p.user_id === requestingUserId && !p.refunded_at);
-  if (!player) {
-    return { success: false, error: 'NOT_IN_LOBBY' };
-  }
+  // Acquire lock to prevent double refunds
+  await acquireLobbyLock(lobbyId);
 
-  // Check if refund is available (timeout passed and match not started)
-  if (lobby.status === 'in_progress') {
-    return { success: false, error: 'REFUND_NOT_AVAILABLE' };
-  }
-
-  if (!lobby.timeout_at || new Date(lobby.timeout_at).getTime() > Date.now()) {
-    return { success: false, error: 'REFUND_NOT_AVAILABLE' };
-  }
-
-  // Process refunds for all players
-  const refunds = [];
-  const playersToRefund = lobby.players.filter(p => !p.refunded_at);
-
-  for (const p of playersToRefund) {
-    let result;
-    try {
-      result = await payments.sendRefundFromLobby(
-        lobby.deposit_private_key_encrypted,
-        p.wallet_address,
-        lobbyId
-      );
-    } catch (error) {
-      console.error(`Refund exception for player ${p.user_id}:`, error);
-      result = { success: false, error: error.message || 'Unknown refund error' };
+  try {
+    // Re-check conditions after acquiring lock
+    // Verify user is in this lobby
+    const player = lobby.players.find(p => p.user_id === requestingUserId && !p.refunded_at);
+    if (!player) {
+      return { success: false, error: 'NOT_IN_LOBBY' };
     }
 
-    if (result.success) {
-      db.markPlayerRefunded(p.id, 'timeout', result.txHash);
-      p.refunded_at = new Date().toISOString();
-      p.refund_reason = 'timeout';
-      p.refund_tx_hash = result.txHash;
-
-      refunds.push({
-        userId: p.user_id,
-        username: p.username || protocol.truncateAddress(p.wallet_address),
-        amount: 1,
-        txHash: result.txHash,
-      });
-    } else {
-      console.error(`Failed to refund player ${p.user_id}:`, result.error);
-
-      // Alert on refund failure
-      sendAlert(AlertType.REFUND_FAILED, {
-        lobbyId,
-        playerAddress: p.wallet_address,
-        error: result.error,
-      });
+    // Check if refund is available (timeout passed and match not started)
+    if (lobby.status === 'in_progress') {
+      return { success: false, error: 'REFUND_NOT_AVAILABLE' };
     }
+
+    if (!lobby.timeout_at || new Date(lobby.timeout_at).getTime() > Date.now()) {
+      return { success: false, error: 'REFUND_NOT_AVAILABLE' };
+    }
+
+    // Process refunds for all players
+    const refunds = [];
+    const playersToRefund = lobby.players.filter(p => !p.refunded_at);
+
+    for (const p of playersToRefund) {
+      let result;
+      try {
+        result = await payments.sendRefundFromLobby(
+          lobby.deposit_private_key_encrypted,
+          p.wallet_address,
+          lobbyId
+        );
+      } catch (error) {
+        console.error(`Refund exception for player ${p.user_id}:`, error);
+        result = { success: false, error: error.message || 'Unknown refund error' };
+      }
+
+      if (result.success) {
+        db.markPlayerRefunded(p.id, 'timeout', result.txHash);
+        p.refunded_at = new Date().toISOString();
+        p.refund_reason = 'timeout';
+        p.refund_tx_hash = result.txHash;
+
+        refunds.push({
+          userId: p.user_id,
+          username: p.username || protocol.truncateAddress(p.wallet_address),
+          amount: 1,
+          txHash: result.txHash,
+        });
+      } else {
+        console.error(`Failed to refund player ${p.user_id}:`, result.error);
+
+        // Alert on refund failure
+        sendAlert(AlertType.REFUND_FAILED, {
+          lobbyId,
+          playerAddress: p.wallet_address,
+          error: result.error,
+        });
+      }
+    }
+
+    // Reset lobby
+    resetLobby(lobbyId);
+
+    return { success: true, refunds };
+  } finally {
+    releaseLobbyLock(lobbyId);
   }
-
-  // Reset lobby
-  resetLobby(lobbyId);
-
-  return { success: true, refunds };
 }
 
 /**
@@ -354,45 +399,52 @@ async function processTreasuryRefund(lobbyId, reason) {
   const lobby = activeLobbies.get(lobbyId);
   if (!lobby) return { success: false, refunds: [] };
 
-  const refunds = [];
-  const playersToRefund = lobby.players.filter(p => !p.refunded_at);
+  // Acquire lock to prevent double refunds
+  await acquireLobbyLock(lobbyId);
 
-  for (const p of playersToRefund) {
-    let result;
-    try {
-      result = await payments.sendRefundFromTreasury(p.wallet_address);
-    } catch (error) {
-      console.error(`Treasury refund exception for player ${p.user_id}:`, error);
-      result = { success: false, error: error.message || 'Unknown refund error' };
+  try {
+    const refunds = [];
+    const playersToRefund = lobby.players.filter(p => !p.refunded_at);
+
+    for (const p of playersToRefund) {
+      let result;
+      try {
+        result = await payments.sendRefundFromTreasury(p.wallet_address);
+      } catch (error) {
+        console.error(`Treasury refund exception for player ${p.user_id}:`, error);
+        result = { success: false, error: error.message || 'Unknown refund error' };
+      }
+
+      if (result.success) {
+        db.markPlayerRefunded(p.id, reason, result.txHash);
+        p.refunded_at = new Date().toISOString();
+        p.refund_reason = reason;
+        p.refund_tx_hash = result.txHash;
+
+        refunds.push({
+          userId: p.user_id,
+          username: p.username || protocol.truncateAddress(p.wallet_address),
+          amount: 1,
+          txHash: result.txHash,
+        });
+      } else {
+        console.error(`Failed to refund player ${p.user_id}:`, result.error);
+
+        // Alert on refund failure
+        sendAlert(AlertType.REFUND_FAILED, {
+          lobbyId,
+          playerAddress: p.wallet_address,
+          error: result.error,
+        });
+      }
     }
 
-    if (result.success) {
-      db.markPlayerRefunded(p.id, reason, result.txHash);
-      p.refunded_at = new Date().toISOString();
-      p.refund_reason = reason;
-      p.refund_tx_hash = result.txHash;
+    resetLobby(lobbyId);
 
-      refunds.push({
-        userId: p.user_id,
-        username: p.username || protocol.truncateAddress(p.wallet_address),
-        amount: 1,
-        txHash: result.txHash,
-      });
-    } else {
-      console.error(`Failed to refund player ${p.user_id}:`, result.error);
-
-      // Alert on refund failure
-      sendAlert(AlertType.REFUND_FAILED, {
-        lobbyId,
-        playerAddress: p.wallet_address,
-        error: result.error,
-      });
-    }
+    return { success: true, refunds };
+  } finally {
+    releaseLobbyLock(lobbyId);
   }
-
-  resetLobby(lobbyId);
-
-  return { success: true, refunds };
 }
 
 // ============================================
@@ -569,4 +621,6 @@ module.exports = {
   forceResetLobby,
   setLobbyInProgress,
   broadcastToLobby,
+  acquireLobbyLock,
+  releaseLobbyLock,
 };

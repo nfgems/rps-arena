@@ -195,93 +195,100 @@ async function recoverInterruptedMatches() {
  * @returns {Object} Match object
  */
 async function startMatch(lobbyId) {
-  const lobbyData = lobby.getLobby(lobbyId);
-  if (!lobbyData || lobbyData.status !== 'ready') {
-    throw new Error('Lobby not ready');
-  }
+  // Acquire lock to prevent concurrent match starts from same lobby
+  await lobby.acquireLobbyLock(lobbyId);
 
-  const players = lobbyData.players.filter(p => !p.refunded_at);
-  if (players.length !== 3) {
-    throw new Error('Need exactly 3 players');
-  }
+  try {
+    const lobbyData = lobby.getLobby(lobbyId);
+    if (!lobbyData || lobbyData.status !== 'ready') {
+      throw new Error('Lobby not ready');
+    }
 
-  // Check lobby wallet balance before starting match (should have 3 USDC from 3 players)
-  const lobbyBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
-  const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
-  if (BigInt(lobbyBalance.balance) < BigInt(payments.WINNER_PAYOUT)) {
-    console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${payments.WINNER_PAYOUT / 1_000_000} USDC for payout)`);
-    const err = new Error('INSUFFICIENT_LOBBY_BALANCE');
-    err.balance = lobbyBalance.formatted;
-    throw err;
-  }
+    const players = lobbyData.players.filter(p => !p.refunded_at);
+    if (players.length !== 3) {
+      throw new Error('Need exactly 3 players');
+    }
 
-  // Generate RNG seed
-  const rngSeed = Date.now();
+    // Check lobby wallet balance before starting match (should have 3 USDC from 3 players)
+    const lobbyBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
+    const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
+    if (BigInt(lobbyBalance.balance) < BigInt(payments.WINNER_PAYOUT)) {
+      console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${payments.WINNER_PAYOUT / 1_000_000} USDC for payout)`);
+      const err = new Error('INSUFFICIENT_LOBBY_BALANCE');
+      err.balance = lobbyBalance.formatted;
+      throw err;
+    }
 
-  // Create match in database
-  const matchData = db.createMatch(lobbyId, rngSeed);
+    // Generate RNG seed
+    const rngSeed = Date.now();
 
-  // Calculate spawn positions and assign roles
-  const spawnPositions = physics.calculateSpawnPositions(rngSeed);
-  const roles = physics.shuffleRoles(rngSeed + 1); // Different seed for roles
+    // Create match in database
+    const matchData = db.createMatch(lobbyId, rngSeed);
 
-  // Create match players
-  const matchPlayers = [];
-  for (let i = 0; i < 3; i++) {
-    const player = players[i];
-    const role = roles[i];
-    const spawn = spawnPositions[i];
+    // Calculate spawn positions and assign roles
+    const spawnPositions = physics.calculateSpawnPositions(rngSeed);
+    const roles = physics.shuffleRoles(rngSeed + 1); // Different seed for roles
 
-    db.addMatchPlayer(matchData.id, player.user_id, role, spawn.x, spawn.y);
+    // Create match players
+    const matchPlayers = [];
+    for (let i = 0; i < 3; i++) {
+      const player = players[i];
+      const role = roles[i];
+      const spawn = spawnPositions[i];
 
-    matchPlayers.push({
-      id: player.user_id,
-      walletAddress: player.wallet_address,
-      username: player.username,
-      role,
-      x: spawn.x,
-      y: spawn.y,
-      targetX: spawn.x,
-      targetY: spawn.y,
-      alive: true,
-      frozen: false,
-      connected: true,
-      lastInputSequence: 0,
+      db.addMatchPlayer(matchData.id, player.user_id, role, spawn.x, spawn.y);
+
+      matchPlayers.push({
+        id: player.user_id,
+        walletAddress: player.wallet_address,
+        username: player.username,
+        role,
+        x: spawn.x,
+        y: spawn.y,
+        targetX: spawn.x,
+        targetY: spawn.y,
+        alive: true,
+        frozen: false,
+        connected: true,
+        lastInputSequence: 0,
+      });
+    }
+
+    // Create active match state
+    const match = {
+      id: matchData.id,
+      lobbyId,
+      status: 'countdown',
+      tick: 0,
+      players: matchPlayers,
+      connections: new Map(lobbyData.connections), // Copy connections from lobby
+      countdownRemaining: 3,
+      gameLoopInterval: null,
+      snapshotCounter: 0,
+    };
+
+    activeMatches.set(matchData.id, match);
+    lobby.setLobbyInProgress(lobbyId, matchData.id);
+
+    // Log match start
+    logger.logMatchStart(matchData.id, 0, matchPlayers);
+
+    // Start countdown
+    startCountdown(match);
+
+    console.log(`Match ${matchData.id} started for lobby ${lobbyId}`);
+
+    // Send activity alert
+    sendAlert(AlertType.MATCH_STARTED, {
+      lobbyId,
+      matchId: matchData.id,
+      players: matchPlayers.map(p => p.username).join(', '),
     });
+
+    return match;
+  } finally {
+    lobby.releaseLobbyLock(lobbyId);
   }
-
-  // Create active match state
-  const match = {
-    id: matchData.id,
-    lobbyId,
-    status: 'countdown',
-    tick: 0,
-    players: matchPlayers,
-    connections: new Map(lobbyData.connections), // Copy connections from lobby
-    countdownRemaining: 3,
-    gameLoopInterval: null,
-    snapshotCounter: 0,
-  };
-
-  activeMatches.set(matchData.id, match);
-  lobby.setLobbyInProgress(lobbyId, matchData.id);
-
-  // Log match start
-  logger.logMatchStart(matchData.id, 0, matchPlayers);
-
-  // Start countdown
-  startCountdown(match);
-
-  console.log(`Match ${matchData.id} started for lobby ${lobbyId}`);
-
-  // Send activity alert
-  sendAlert(AlertType.MATCH_STARTED, {
-    lobbyId,
-    matchId: matchData.id,
-    players: matchPlayers.map(p => p.username).join(', '),
-  });
-
-  return match;
 }
 
 // ============================================
@@ -515,7 +522,9 @@ function processTick(match) {
 
   // 2. Check win condition after disconnects
   if (stillAlive.length <= 1) {
-    endMatch(match, stillAlive[0] || null, 'last_standing');
+    endMatch(match, stillAlive[0] || null, 'last_standing').catch(err => {
+      console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
+    });
     return;
   }
 
@@ -588,7 +597,9 @@ function processTick(match) {
   const finalAlive = match.players.filter(p => p.alive);
   if (finalAlive.length <= 1) {
     console.log(`[DEBUG] Match ending - winner: ${finalAlive[0]?.id || 'none'}, reason: last_standing`);
-    endMatch(match, finalAlive[0] || null, 'last_standing');
+    endMatch(match, finalAlive[0] || null, 'last_standing').catch(err => {
+      console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
+    });
     return;
   }
 
@@ -862,12 +873,16 @@ function handleDisconnect(matchId, userId) {
 
   if (connectedCount === 0 && aliveCount > 1) {
     // All players disconnected simultaneously
-    voidMatch(matchId, 'triple_disconnect');
+    voidMatch(matchId, 'triple_disconnect').catch(err => {
+      console.error(`[DISCONNECT] Failed to void match ${matchId}:`, err);
+    });
   } else if (aliveCount === 2) {
     // Check if last 2 players disconnected
     const aliveAndConnected = match.players.filter(p => p.alive && p.connected);
     if (aliveAndConnected.length === 0) {
-      voidMatch(matchId, 'double_disconnect');
+      voidMatch(matchId, 'double_disconnect').catch(err => {
+        console.error(`[DISCONNECT] Failed to void match ${matchId}:`, err);
+      });
     }
   }
 }

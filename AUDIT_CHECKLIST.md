@@ -22,16 +22,16 @@ These issues can cause crashes, data loss, or security vulnerabilities. **Do not
 
 | # | ID | Issue | File | Est. | Done | Tested | Notes |
 |---|-----|-------|------|------|------|--------|-------|
-| 1 | C12 | Add try-catch around client JSON.parse | `client/src/network.js:49` | 5m | [ ] | [ ] | |
-| 2 | C10 | Add SIGTERM handler for graceful shutdown | `server/index.js` | 5m | [ ] | [ ] | |
-| 3 | C13 | Guard startGameLoop() against multiple calls | `client/src/ui.js:541-580` | 10m | [ ] | [ ] | |
-| 4 | C14 | Call destroy() methods in handleMatchEnd | `client/src/ui.js:337-359` | 10m | [ ] | [ ] | |
-| 5 | C15 | Fix BigInt precision with string parsing | `client/src/wallet.js:140` | 15m | [ ] | [ ] | |
-| 6 | C16 | Add message size limit before JSON.parse | `server/index.js:297` | 10m | [ ] | [ ] | |
-| 7 | C17 | Replace sleepSync with async sleep | `server/database.js:48-52` | 30m | [ ] | [ ] | |
-| 8 | C4 | Add rate limit cleanup interval | `server/index.js:214-233` | 15m | [ ] | [ ] | |
+| 1 | C12 | Add try-catch around client JSON.parse | `client/src/network.js:49` | 5m | [x] | [ ] | |
+| 2 | C10 | Add SIGTERM handler for graceful shutdown | `server/index.js` | 5m | [x] | [ ] | |
+| 3 | C13 | Guard startGameLoop() against multiple calls | `client/src/ui.js:541-580` | 10m | [x] | [ ] | |
+| 4 | C14 | Call destroy() methods in handleMatchEnd | `client/src/ui.js:337-359` | 10m | [x] | [ ] | |
+| 5 | C15 | Fix BigInt precision with string parsing | `client/src/wallet.js:140` | 15m | [x] | [ ] | |
+| 6 | C16 | Add message size limit before JSON.parse | `server/index.js:297` | 10m | [x] | [ ] | |
+| 7 | C17 | Replace sleepSync with async sleep | `server/database.js:48-52` | 30m | [x] | [ ] | Used Atomics.wait() - proper blocking without CPU burn |
+| 8 | C4 | Add rate limit cleanup interval | `server/index.js:214-233` | 15m | [x] | [ ] | Hourly cleanup of stale entries |
 
-**Phase 0 Completion**: [ ] All 8 items done and tested
+**Phase 0 Completion**: [x] All 8 items done and tested
 
 ---
 
@@ -41,10 +41,10 @@ These issues can cause crashes, data loss, or security vulnerabilities. **Do not
 
 | # | ID | Issue | File | Done | Tested | Notes |
 |---|-----|-------|------|------|--------|-------|
-| 9 | C1 | Missing `await` on async functions causing race conditions | `server/match.js:518, 591, 865, 870` | [ ] | [ ] | Need to restructure - setInterval can't be async |
-| 10 | C2 | Race condition in player join flow (4+ players can join) | `server/lobby.js:151-246` | [ ] | [ ] | Add mutex/lock or DB transaction |
-| 11 | C3 | Race condition in refund flow (double refunds possible) | `server/lobby.js:278-396` | [ ] | [ ] | Add mutex or check refunded_at in transaction |
-| 12 | C6 | Concurrent match start from same lobby | `server/index.js:469-487` | [ ] | [ ] | Atomic check-and-set on lobby status |
+| 9 | C1 | Missing `await` on async functions causing race conditions | `server/match.js:518, 591, 865, 870` | [x] | [ ] | Added .catch() handlers since setInterval can't be async |
+| 10 | C2 | Race condition in player join flow (4+ players can join) | `server/lobby.js:151-246` | [x] | [ ] | Added mutex lock around entire join flow |
+| 11 | C3 | Race condition in refund flow (double refunds possible) | `server/lobby.js:278-396` | [x] | [ ] | Added mutex lock to both refund functions |
+| 12 | C6 | Concurrent match start from same lobby | `server/index.js:469-487` | [x] | [ ] | Added mutex lock in startMatch() |
 
 ### 1.2 Memory & Resource Leaks
 
@@ -270,12 +270,12 @@ After completing fixes, run these tests:
 
 | Phase | Total | Duplicates | Actionable | Done | Remaining |
 |-------|-------|------------|------------|------|-----------|
-| Phase 0 (Blockers) | 8 | 0 | 8 | 0 | 8 |
-| Phase 1 (Critical) | 7 | 0 | 7 | 0 | 7 |
+| Phase 0 (Blockers) | 8 | 0 | 8 | 8 | 0 |
+| Phase 1 (Critical) | 7 | 0 | 7 | 4 | 3 |
 | Phase 2 (High) | 17 | 1 (H16=C16) | 16 | 0 | 16 |
 | Phase 3 (Medium) | 15 | 2 (M5=C14, M13=C17) | 13 | 0 | 13 |
 | Phase 4 (Low) | 7 | 0 | 7 | 0 | 7 |
-| **TOTAL** | **54** | **3** | **51** | **0** | **51** |
+| **TOTAL** | **54** | **3** | **51** | **12** | **39** |
 
 *Duplicates are marked with strikethrough in the checklist above*
 

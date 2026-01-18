@@ -22,6 +22,15 @@ const Wallet = (function () {
   ];
 
   /**
+   * Convert amount to USDC units using string parsing (avoids floating-point precision loss)
+   */
+  function toUSDCUnits(amount) {
+    const [whole, decimal = ''] = amount.toString().split('.');
+    const paddedDecimal = decimal.padEnd(USDC_DECIMALS, '0').slice(0, USDC_DECIMALS);
+    return BigInt(whole + paddedDecimal);
+  }
+
+  /**
    * Check if Web3 wallet is available
    */
   function isAvailable() {
@@ -136,8 +145,8 @@ const Wallet = (function () {
 
     const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
 
-    // Amount in smallest units (6 decimals)
-    const amountInUnits = BigInt(amount * 10 ** USDC_DECIMALS);
+    // Amount in smallest units (6 decimals) - use string parsing to avoid precision loss
+    const amountInUnits = toUSDCUnits(amount);
 
     // Check balance first
     const balance = await usdc.balanceOf(address);

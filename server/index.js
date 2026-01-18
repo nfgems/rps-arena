@@ -214,6 +214,36 @@ adminApp.post('/api/bot/remove', (req, res) => {
 const rateLimits = new Map(); // IP -> { inputCount, otherCount, lastReset }
 const connectionCounts = new Map(); // IP -> count
 
+// Cleanup stale rate limit entries every hour to prevent memory leak
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const RATE_LIMIT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+setInterval(() => {
+  const now = Date.now();
+  let rateLimitsRemoved = 0;
+  let connectionCountsRemoved = 0;
+
+  // Clean stale rate limit entries
+  for (const [ip, limits] of rateLimits) {
+    if (now - limits.lastReset > RATE_LIMIT_MAX_AGE_MS) {
+      rateLimits.delete(ip);
+      rateLimitsRemoved++;
+    }
+  }
+
+  // Clean zero connection count entries
+  for (const [ip, count] of connectionCounts) {
+    if (count <= 0) {
+      connectionCounts.delete(ip);
+      connectionCountsRemoved++;
+    }
+  }
+
+  if (rateLimitsRemoved > 0 || connectionCountsRemoved > 0) {
+    console.log(`[CLEANUP] Removed ${rateLimitsRemoved} stale rate limits, ${connectionCountsRemoved} zero connection counts`);
+  }
+}, RATE_LIMIT_CLEANUP_INTERVAL_MS);
+
 function checkRateLimit(ip, messageType) {
   const now = Date.now();
   let limits = rateLimits.get(ip);
@@ -295,6 +325,14 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
     }, 5000);
 
     ws.on('message', async (data) => {
+      // Limit message size to prevent DoS (16KB should be plenty for game messages)
+      const MAX_MESSAGE_SIZE = 16 * 1024;
+      if (data.length > MAX_MESSAGE_SIZE) {
+        console.log(`[SECURITY] Oversized message from ${ip}: ${data.length} bytes`);
+        ws.send(protocol.createError('MESSAGE_TOO_LARGE'));
+        return;
+      }
+
       const { message, error } = protocol.parseMessage(data.toString());
       if (!message) {
         // Log validation errors for debugging (not shown to client for security)
@@ -616,9 +654,9 @@ async function initialize() {
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', async () => {
+async function gracefulShutdown(reason) {
   console.log('\nShutting down...');
-  await sendAlert(AlertType.SERVER_SHUTDOWN, { reason: 'SIGINT (manual stop)' });
+  await sendAlert(AlertType.SERVER_SHUTDOWN, { reason });
 
   // Stop health monitor
   match.stopHealthMonitor();
@@ -644,7 +682,10 @@ process.on('SIGINT', async () => {
 
     process.exit(0);
   });
-});
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT (manual stop)'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM (container stop)'));
 
 // Start the server
 initialize().catch((error) => {

@@ -337,6 +337,8 @@ const UI = (function () {
   function handleMatchEnd(data) {
     Input.stopSending();
     stopGameLoop();
+    Input.destroy();
+    Renderer.destroy();
 
     const myId = Network.getUserId();
     const isWinner = data.winnerId === myId;
@@ -539,6 +541,8 @@ const UI = (function () {
   }
 
   function startGameLoop() {
+    if (gameLoopId) return; // Prevent multiple game loops
+
     const gameState = { effects: [] };
     let loopCount = 0;
 
