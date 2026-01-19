@@ -287,19 +287,17 @@ const Network = (function () {
   let inputSequence = 0;
 
   /**
-   * Send player input to server
-   * @param {number} targetX - Target X position
-   * @param {number} targetY - Target Y position
-   * @param {boolean} [frozen=false] - Whether player is frozen (not moving)
+   * Send player input to server (direction-based movement)
+   * @param {number} dirX - X direction (-1, 0, or 1)
+   * @param {number} dirY - Y direction (-1, 0, or 1)
    */
-  function sendInput(targetX, targetY, frozen = false) {
+  function sendInput(dirX, dirY) {
     inputSequence++;
     send({
       type: 'INPUT',
-      targetX,
-      targetY,
+      dirX,
+      dirY,
       sequence: inputSequence,
-      frozen,
     });
   }
 

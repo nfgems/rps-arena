@@ -1,134 +1,150 @@
 /**
  * Input handling for RPS Arena
- * Mouse tracking and input sending
+ * Keyboard-based movement (WASD/Arrow keys)
  */
 
 const Input = (function () {
   // State
   let canvas = null;
-  let targetX = 0;
-  let targetY = 0;
   let enabled = false;
   let sendInterval = null;
-  let hasReceivedMouseMove = false; // Track if mouse has moved since game started
-  let lastMouseX = null; // Track last raw mouse position to detect actual movement
-  let lastMouseY = null;
+
+  // Direction state (-1, 0, or 1 for each axis)
+  let dirX = 0;
+  let dirY = 0;
+
+  // Track which keys are currently pressed
+  const keysPressed = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
 
   // Constants
-  const ARENA_WIDTH = 1600;
-  const ARENA_HEIGHT = 900;
   const SEND_RATE = 60; // 60 Hz
-  const MOUSE_MOVE_THRESHOLD = 5; // Minimum pixels mouse must move to register
 
   /**
-   * Initialize input handling for a canvas element
-   * @param {HTMLCanvasElement} canvasElement - Game canvas to track mouse on
+   * Initialize input handling
+   * @param {HTMLCanvasElement} canvasElement - Game canvas (for focus)
    */
   function init(canvasElement) {
     canvas = canvasElement;
 
-    // Mouse move handler - use document to catch all mouse movement
-    // This fixes the issue where canvas doesn't receive events until focused
-    document.addEventListener('mousemove', handleMouseMove);
+    // Make canvas focusable
+    canvas.tabIndex = 1;
 
-    // Also listen on canvas for redundancy
-    canvas.addEventListener('mousemove', handleMouseMove);
+    // Keyboard handlers
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
 
-    // Mouse leave handler
-    canvas.addEventListener('mouseleave', handleMouseLeave);
-
-    // Mouse enter handler
-    canvas.addEventListener('mouseenter', handleMouseEnter);
+    // Focus canvas when clicked
+    canvas.addEventListener('click', () => canvas.focus());
   }
 
   /**
-   * Handle mouse movement events
-   * @param {MouseEvent} event - Mouse event
+   * Handle key down events
+   * @param {KeyboardEvent} event
    */
-  function handleMouseMove(event) {
+  function handleKeyDown(event) {
     if (!enabled) return;
-    if (!canvas) return;
 
-    // Get canvas-relative coordinates
-    const rect = canvas.getBoundingClientRect();
+    const key = event.key.toLowerCase();
 
-    // Skip if canvas hasn't been laid out yet (would cause NaN/Infinity)
-    if (rect.width === 0 || rect.height === 0) {
-      console.warn('[Input] Canvas has zero dimensions - mouse input ignored until canvas is properly sized. This may indicate a layout issue.');
-      return;
+    // Prevent default for game keys to avoid scrolling
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+      event.preventDefault();
     }
 
-    // Check if mouse has actually moved since last check
-    // This prevents the initial mouse position from immediately overwriting spawn position
-    if (lastMouseX !== null && lastMouseY !== null) {
-      const mouseDeltaX = Math.abs(event.clientX - lastMouseX);
-      const mouseDeltaY = Math.abs(event.clientY - lastMouseY);
-
-      // Only register as actual movement if mouse moved more than threshold
-      if (mouseDeltaX < MOUSE_MOVE_THRESHOLD && mouseDeltaY < MOUSE_MOVE_THRESHOLD) {
-        // Mouse hasn't moved enough, don't update target
-        return;
-      }
-
-      // Mouse has moved, mark that we've received real input
-      if (!hasReceivedMouseMove) {
-        hasReceivedMouseMove = true;
-      }
+    // Update key state
+    switch (key) {
+      case 'w':
+      case 'arrowup':
+        keysPressed.up = true;
+        break;
+      case 's':
+      case 'arrowdown':
+        keysPressed.down = true;
+        break;
+      case 'a':
+      case 'arrowleft':
+        keysPressed.left = true;
+        break;
+      case 'd':
+      case 'arrowright':
+        keysPressed.right = true;
+        break;
     }
 
-    // Update last known mouse position
-    lastMouseX = event.clientX;
-    lastMouseY = event.clientY;
-
-    // If this is the very first mousemove event after enable, just record position, don't update target
-    if (!hasReceivedMouseMove) {
-      return;
-    }
-
-    const canvasX = event.clientX - rect.left;
-    const canvasY = event.clientY - rect.top;
-
-    // Scale to logical arena coordinates
-    const scaleX = ARENA_WIDTH / rect.width;
-    const scaleY = ARENA_HEIGHT / rect.height;
-
-    const newX = Math.max(0, Math.min(ARENA_WIDTH, canvasX * scaleX));
-    const newY = Math.max(0, Math.min(ARENA_HEIGHT, canvasY * scaleY));
-
-    targetX = newX;
-    targetY = newY;
+    updateDirection();
   }
 
   /**
-   * Handle mouse leaving canvas
-   * NOTE: We no longer freeze on mouse leave - player continues moving toward last known target
+   * Handle key up events
+   * @param {KeyboardEvent} event
    */
-  function handleMouseLeave() {
-    // Don't freeze - let player continue moving toward last target position
-    // This prevents the "invisible barrier" feel when mouse briefly leaves canvas
+  function handleKeyUp(event) {
+    const key = event.key.toLowerCase();
+
+    // Update key state
+    switch (key) {
+      case 'w':
+      case 'arrowup':
+        keysPressed.up = false;
+        break;
+      case 's':
+      case 'arrowdown':
+        keysPressed.down = false;
+        break;
+      case 'a':
+      case 'arrowleft':
+        keysPressed.left = false;
+        break;
+      case 'd':
+      case 'arrowright':
+        keysPressed.right = false;
+        break;
+    }
+
+    updateDirection();
   }
 
   /**
-   * Handle mouse entering canvas
+   * Update direction based on current key state
    */
-  function handleMouseEnter() {
-    // No longer needed since we don't freeze on leave
+  function updateDirection() {
+    // Calculate direction from pressed keys
+    dirX = 0;
+    dirY = 0;
+
+    if (keysPressed.left) dirX -= 1;
+    if (keysPressed.right) dirX += 1;
+    if (keysPressed.up) dirY -= 1;
+    if (keysPressed.down) dirY += 1;
   }
 
   /**
    * Start sending inputs
    */
   function startSending() {
-    // Reset mouse tracking - player will stay at spawn until mouse actually moves
-    hasReceivedMouseMove = false;
-    lastMouseX = null;
-    lastMouseY = null;
+    // Reset direction state
+    dirX = 0;
+    dirY = 0;
+    keysPressed.up = false;
+    keysPressed.down = false;
+    keysPressed.left = false;
+    keysPressed.right = false;
 
     enabled = true;
 
+    // Focus canvas for keyboard input
+    if (canvas) {
+      canvas.focus();
+    }
+
     // Send inputs at 60 Hz
     sendInterval = setInterval(() => {
-      Network.sendInput(targetX, targetY, false);
+      Network.sendInput(dirX, dirY);
     }, 1000 / SEND_RATE);
   }
 
@@ -137,6 +153,8 @@ const Input = (function () {
    */
   function stopSending() {
     enabled = false;
+    dirX = 0;
+    dirY = 0;
 
     if (sendInterval) {
       clearInterval(sendInterval);
@@ -145,21 +163,28 @@ const Input = (function () {
   }
 
   /**
-   * Get current target position
-   * @returns {{x: number, y: number, frozen: boolean}} Target position and frozen state
+   * Get current direction
+   * @returns {{dx: number, dy: number}} Direction vector
    */
-  function getTarget() {
-    return { x: targetX, y: targetY, frozen: false };
+  function getDirection() {
+    return { dx: dirX, dy: dirY };
   }
 
   /**
-   * Set initial target position (for spawn position)
-   * @param {number} x - X position
-   * @param {number} y - Y position
+   * Set initial target position (no longer used for keyboard movement)
+   * Kept for API compatibility
    */
   function setPosition(x, y) {
-    targetX = x;
-    targetY = y;
+    // No-op for keyboard movement
+  }
+
+  /**
+   * Get current target (compatibility method)
+   * @returns {{x: number, y: number, frozen: boolean}}
+   */
+  function getTarget() {
+    // Return zeros - not used in keyboard mode
+    return { x: 0, y: 0, frozen: false };
   }
 
   /**
@@ -175,12 +200,8 @@ const Input = (function () {
    */
   function destroy() {
     stopSending();
-    document.removeEventListener('mousemove', handleMouseMove);
-    if (canvas) {
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('mouseleave', handleMouseLeave);
-      canvas.removeEventListener('mouseenter', handleMouseEnter);
-    }
+    document.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('keyup', handleKeyUp);
     canvas = null;
   }
 
@@ -189,6 +210,7 @@ const Input = (function () {
     init,
     startSending,
     stopSending,
+    getDirection,
     getTarget,
     setPosition,
     isEnabled,

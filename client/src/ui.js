@@ -777,17 +777,39 @@ Expiration Time: ${expirationTime}`;
 
     const gameState = { effects: [], showdown: null, localPlayerId: null };
 
-    function loop() {
-      // Update local player position based on input
-      const target = Input.getTarget();
+    // Client-side prediction constants (match server physics)
+    const MAX_SPEED = 450; // pixels per second
+    const TICK_RATE = 30;
+    const MAX_DELTA_PER_TICK = MAX_SPEED / TICK_RATE;
 
-      // Simple client-side prediction (move toward target)
+    let lastFrameTime = performance.now();
+
+    function loop() {
+      const now = performance.now();
+      const deltaTime = (now - lastFrameTime) / 1000; // Convert to seconds
+      lastFrameTime = now;
+
+      // Get current direction from keyboard input
+      const direction = Input.getDirection();
+
+      // Client-side prediction: move in the direction at server speed
       const currentPos = Interpolation.getPosition(Network.getUserId());
 
-      if (currentPos) {
-        // For responsive feel, move directly toward mouse cursor
-        // The server will enforce the actual speed limit and reconcile
-        const clamped = clampToArena(target.x, target.y);
+      if (currentPos && (direction.dx !== 0 || direction.dy !== 0)) {
+        // Normalize diagonal movement
+        let moveX = direction.dx;
+        let moveY = direction.dy;
+        if (direction.dx !== 0 && direction.dy !== 0) {
+          const diagonalFactor = 1 / Math.sqrt(2);
+          moveX *= diagonalFactor;
+          moveY *= diagonalFactor;
+        }
+
+        // Apply movement (scale by deltaTime for frame-rate independence)
+        const newX = currentPos.x + moveX * MAX_SPEED * deltaTime;
+        const newY = currentPos.y + moveY * MAX_SPEED * deltaTime;
+
+        const clamped = clampToArena(newX, newY);
         Interpolation.updateLocalPosition(clamped.x, clamped.y);
       }
 

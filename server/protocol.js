@@ -196,22 +196,20 @@ function validatePing(message) {
 }
 
 /**
- * Validate INPUT message
+ * Validate INPUT message (direction-based movement)
  * @param {Object} message - Message to validate
  * @returns {{valid: boolean, error?: string}}
  */
 function validateInput(message) {
-  if (!isValidCoordinate(message.targetX, ARENA_WIDTH)) {
-    return { valid: false, error: `Invalid targetX: must be number 0-${ARENA_WIDTH}` };
+  // dirX and dirY must be -1, 0, or 1
+  if (typeof message.dirX !== 'number' || ![-1, 0, 1].includes(message.dirX)) {
+    return { valid: false, error: 'Invalid dirX: must be -1, 0, or 1' };
   }
-  if (!isValidCoordinate(message.targetY, ARENA_HEIGHT)) {
-    return { valid: false, error: `Invalid targetY: must be number 0-${ARENA_HEIGHT}` };
+  if (typeof message.dirY !== 'number' || ![-1, 0, 1].includes(message.dirY)) {
+    return { valid: false, error: 'Invalid dirY: must be -1, 0, or 1' };
   }
   if (!isNonNegativeInteger(message.sequence)) {
     return { valid: false, error: 'Invalid sequence: must be non-negative integer' };
-  }
-  if (message.frozen !== undefined && typeof message.frozen !== 'boolean') {
-    return { valid: false, error: 'Invalid frozen: must be boolean' };
   }
   return { valid: true };
 }

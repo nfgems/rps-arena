@@ -829,10 +829,9 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
       if (!authenticated || !currentMatchId) return;
 
       match.processInput(currentMatchId, userId, {
-        targetX: message.targetX,
-        targetY: message.targetY,
+        dirX: message.dirX,
+        dirY: message.dirY,
         sequence: message.sequence,
-        frozen: message.frozen,
       });
     }
   });

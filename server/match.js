@@ -264,12 +264,15 @@ async function startMatch(lobbyId, skipBalanceCheck = false) {
         role,
         x: spawn.x,
         y: spawn.y,
-        targetX: spawn.x,
-        targetY: spawn.y,
+        targetX: spawn.x,  // Used by bots
+        targetY: spawn.y,  // Used by bots
+        dirX: 0,           // Used by human players (keyboard)
+        dirY: 0,           // Used by human players (keyboard)
         alive: true,
         frozen: false,
         connected: true,
         lastInputSequence: 0,
+        isBot: !!player.isBot,  // Track if this is a bot
       });
     }
 
@@ -553,11 +556,23 @@ function processTick(match) {
   }
 
   for (const player of stillAlive) {
-    const newPos = physics.moveTowardTarget(
-      { x: player.x, y: player.y },
-      { x: player.targetX, y: player.targetY },
-      player.frozen
-    );
+    let newPos;
+    if (player.isBot) {
+      // Bots use target-based movement
+      newPos = physics.moveTowardTarget(
+        { x: player.x, y: player.y },
+        { x: player.targetX, y: player.targetY },
+        player.frozen
+      );
+    } else {
+      // Human players use direction-based movement (keyboard)
+      newPos = physics.moveInDirection(
+        { x: player.x, y: player.y },
+        player.dirX || 0,
+        player.dirY || 0,
+        player.frozen
+      );
+    }
     player.x = newPos.x;
     player.y = newPos.y;
   }
@@ -930,25 +945,28 @@ function processInput(matchId, userId, input) {
   }
   player.lastInputSequence = input.sequence;
 
-  // Validate target position (within arena)
-  const targetX = Math.max(0, Math.min(physics.ARENA_WIDTH, input.targetX));
-  const targetY = Math.max(0, Math.min(physics.ARENA_HEIGHT, input.targetY));
+  // Handle both input types:
+  // - Human players send dirX/dirY (keyboard direction)
+  // - Bots send targetX/targetY (position to move toward)
+  if (input.targetX !== undefined && input.targetY !== undefined) {
+    // Bot input: target position
+    player.targetX = Math.max(0, Math.min(physics.ARENA_WIDTH, input.targetX));
+    player.targetY = Math.max(0, Math.min(physics.ARENA_HEIGHT, input.targetY));
+  } else {
+    // Human input: direction
+    player.dirX = input.dirX || 0;
+    player.dirY = input.dirY || 0;
+  }
 
   // Debug first few accepted inputs
   if (DEBUG_MATCH && inputLogCount < 10) {
-    console.log('[DEBUG] Input accepted - seq:', input.sequence, 'target:', targetX.toFixed(1), targetY.toFixed(1), 'player pos:', player.x.toFixed(1), player.y.toFixed(1));
+    if (player.isBot) {
+      console.log('[DEBUG] Bot input - seq:', input.sequence, 'target:', player.targetX?.toFixed(1), player.targetY?.toFixed(1));
+    } else {
+      console.log('[DEBUG] Input accepted - seq:', input.sequence, 'dir:', player.dirX, player.dirY, 'player pos:', player.x.toFixed(1), player.y.toFixed(1));
+    }
     inputLogCount++;
   }
-
-  player.targetX = targetX;
-  player.targetY = targetY;
-
-  // In showdown mode, server controls frozen state - ignore client frozen flag
-  // Outside showdown, respect client frozen flag
-  if (!match.showdown) {
-    player.frozen = input.frozen || false;
-  }
-  // Note: In showdown, player.frozen is managed by triggerShowdown() and its timeout
 }
 
 // ============================================

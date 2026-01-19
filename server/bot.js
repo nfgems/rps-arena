@@ -74,6 +74,7 @@ async function addBotToLobby(lobbyId) {
     ...lobbyPlayer,
     wallet_address: user.wallet_address,
     username: user.username,
+    isBot: true,  // Mark as bot for movement logic
   });
 
   // Update lobby status if needed

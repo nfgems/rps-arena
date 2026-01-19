@@ -31,7 +31,37 @@ const BEATS = {
 // ============================================
 
 /**
- * Calculate new position moving toward target
+ * Calculate new position moving in a direction (keyboard-based)
+ * @param {Object} current - Current position {x, y}
+ * @param {number} dirX - X direction (-1, 0, or 1)
+ * @param {number} dirY - Y direction (-1, 0, or 1)
+ * @param {boolean} frozen - Whether player is frozen
+ * @returns {Object} New position {x, y}
+ */
+function moveInDirection(current, dirX, dirY, frozen = false) {
+  if (frozen || (dirX === 0 && dirY === 0)) {
+    return { x: current.x, y: current.y };
+  }
+
+  // Normalize diagonal movement so it's not faster
+  let moveX = dirX;
+  let moveY = dirY;
+  if (dirX !== 0 && dirY !== 0) {
+    // Diagonal: divide by sqrt(2) to maintain same speed
+    const diagonalFactor = 1 / Math.sqrt(2);
+    moveX *= diagonalFactor;
+    moveY *= diagonalFactor;
+  }
+
+  // Apply movement at max speed
+  const newX = current.x + moveX * MAX_DELTA_PER_TICK;
+  const newY = current.y + moveY * MAX_DELTA_PER_TICK;
+
+  return clampToArena(newX, newY);
+}
+
+/**
+ * Calculate new position moving toward target (used by bots)
  * @param {Object} current - Current position {x, y}
  * @param {Object} target - Target position {x, y}
  * @param {boolean} frozen - Whether player is frozen
@@ -517,72 +547,22 @@ function spawnHearts(count = 3) {
 
 /**
  * Check if a player is touching a heart (for capture)
- * Uses multiple checks: current position, target position, and swept collision
- * @param {Object} player - Player object with {x, y, prevX, prevY, targetX, targetY}
+ * Simple overlap check: if distance between centers <= sum of radii, they're touching
+ * @param {Object} player - Player object with {x, y}
  * @param {Object} heart - Heart object with {x, y, captured}
- * @returns {boolean} True if player is touching or passed through the heart
+ * @returns {boolean} True if player is touching the heart
  */
 function isPlayerTouchingHeart(player, heart) {
   if (heart.captured) return false;
 
   const captureRadius = PLAYER_RADIUS + HEART_RADIUS;
 
-  // Check current position
+  // Simple distance check - if player's edge overlaps heart's edge, capture
   const dx = player.x - heart.x;
   const dy = player.y - heart.y;
-  const currentDist = Math.sqrt(dx * dx + dy * dy);
+  const dist = Math.sqrt(dx * dx + dy * dy);
 
-  if (currentDist <= captureRadius) {
-    return true;
-  }
-
-  // Check if player's TARGET (mouse position) is on the heart
-  // This makes capture feel instant when you click/hover on a heart
-  if (player.targetX !== undefined && player.targetY !== undefined) {
-    const targetDx = player.targetX - heart.x;
-    const targetDy = player.targetY - heart.y;
-    const targetDist = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
-
-    // If mouse is on the heart and player is close enough to reach it this tick
-    if (targetDist <= captureRadius && currentDist <= captureRadius + MAX_DELTA_PER_TICK) {
-      return true;
-    }
-  }
-
-  // Swept collision: check if player passed through heart during movement
-  // Heart is stationary, so we check if the line segment from prevPos to currentPos
-  // comes within captureRadius of the heart center
-  const prevX = player.prevX ?? player.x;
-  const prevY = player.prevY ?? player.y;
-
-  // Vector from prev to current position
-  const moveX = player.x - prevX;
-  const moveY = player.y - prevY;
-  const moveLengthSq = moveX * moveX + moveY * moveY;
-
-  // If player didn't move, only current position matters (already checked)
-  if (moveLengthSq < 0.001) {
-    return false;
-  }
-
-  // Vector from prev position to heart center
-  const toHeartX = heart.x - prevX;
-  const toHeartY = heart.y - prevY;
-
-  // Project heart onto movement line: t = dot(toHeart, move) / |move|^2
-  // t=0 is at prevPos, t=1 is at currentPos
-  const t = Math.max(0, Math.min(1, (toHeartX * moveX + toHeartY * moveY) / moveLengthSq));
-
-  // Closest point on movement line segment to heart
-  const closestX = prevX + t * moveX;
-  const closestY = prevY + t * moveY;
-
-  // Distance from closest point to heart
-  const closestDx = closestX - heart.x;
-  const closestDy = closestY - heart.y;
-  const closestDist = Math.sqrt(closestDx * closestDx + closestDy * closestDy);
-
-  return closestDist <= captureRadius;
+  return dist <= captureRadius;
 }
 
 /**
@@ -627,6 +607,7 @@ module.exports = {
   BEATS,
 
   // Movement
+  moveInDirection,
   moveTowardTarget,
   clampToArena,
 
