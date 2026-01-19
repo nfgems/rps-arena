@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
-    "init-db": "node -e \"require('./server/database.js').initializeDatabase()\""
+    "init-db": "node -e \"require('./server/database.js').initializeDatabase()\"",
+    "test:security": "node tests/security/security-tests.js",
+    "test:security:prod": "node tests/security/security-tests.js --production",
+    "test:load": "node tests/load/load-test.js",
+    "test:e2e": "node tests/e2e/full-game-flow.js"
   },
   "dependencies": {
     "@sentry/node": "8.0.0",
