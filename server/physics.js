@@ -167,9 +167,10 @@ function getRpsLoser(role1, role2) {
  * Process collisions for all alive players
  * Uses swept collision detection to catch collisions that occur during movement
  * @param {Array} players - Array of player objects with {id, x, y, alive, role, prevX, prevY}
+ * @param {boolean} showdownMode - If true, all collisions result in bounce (no eliminations)
  * @returns {Object} { type: 'none'|'elimination'|'bounce', eliminations, bouncedPlayers }
  */
-function processCollisions(players) {
+function processCollisions(players, showdownMode = false) {
   const alive = players.filter(p => p.alive);
   const eliminations = [];
   const sameRolePairs = [];
@@ -205,20 +206,26 @@ function processCollisions(players) {
 
       // Use swept collision OR endpoint overlap
       if (overlapping || sweptCollision) {
-        const loser = getRpsLoser(p1.role, p2.role);
-        if (DEBUG_PHYSICS) {
-          console.log(`[DEBUG] COLLISION DETECTED (overlap=${overlapping}, swept=${sweptCollision}) at dist=${dist.toFixed(1)}: ${p1.role}(${p1.id.slice(-4)}) vs ${p2.role}(${p2.id.slice(-4)}), getRpsLoser=${loser}`);
-        }
-        if (loser === 1) {
-          if (DEBUG_PHYSICS) console.log(`[DEBUG] -> ${p1.role} loses to ${p2.role}`);
-          eliminations.push({ winner: p2, loser: p1 });
-        } else if (loser === 2) {
-          if (DEBUG_PHYSICS) console.log(`[DEBUG] -> ${p2.role} loses to ${p1.role}`);
-          eliminations.push({ winner: p1, loser: p2 });
-        } else {
-          // Same role = bounce apart instead of overlapping
-          if (DEBUG_PHYSICS) console.log(`[DEBUG] -> Same role collision (loser=0) - bouncing ${p1.role} vs ${p2.role}`);
+        // In showdown mode, ALL collisions result in bounce (no eliminations)
+        if (showdownMode) {
+          if (DEBUG_PHYSICS) console.log(`[DEBUG] SHOWDOWN collision - bouncing ${p1.role} vs ${p2.role}`);
           sameRolePairs.push([p1, p2]);
+        } else {
+          const loser = getRpsLoser(p1.role, p2.role);
+          if (DEBUG_PHYSICS) {
+            console.log(`[DEBUG] COLLISION DETECTED (overlap=${overlapping}, swept=${sweptCollision}) at dist=${dist.toFixed(1)}: ${p1.role}(${p1.id.slice(-4)}) vs ${p2.role}(${p2.id.slice(-4)}), getRpsLoser=${loser}`);
+          }
+          if (loser === 1) {
+            if (DEBUG_PHYSICS) console.log(`[DEBUG] -> ${p1.role} loses to ${p2.role}`);
+            eliminations.push({ winner: p2, loser: p1 });
+          } else if (loser === 2) {
+            if (DEBUG_PHYSICS) console.log(`[DEBUG] -> ${p2.role} loses to ${p1.role}`);
+            eliminations.push({ winner: p1, loser: p2 });
+          } else {
+            // Same role = bounce apart instead of overlapping
+            if (DEBUG_PHYSICS) console.log(`[DEBUG] -> Same role collision (loser=0) - bouncing ${p1.role} vs ${p2.role}`);
+            sameRolePairs.push([p1, p2]);
+          }
         }
       }
     }
@@ -440,6 +447,118 @@ function seededRandom(seed) {
 }
 
 // ============================================
+// Showdown Mode - Heart Spawning & Capture
+// ============================================
+
+// Minimum distance between hearts to prevent overlap
+const MIN_HEART_DISTANCE = 50;
+
+// Heart capture radius (player must be within this distance to capture)
+const HEART_RADIUS = 25;
+
+/**
+ * Generate random heart positions for showdown mode
+ * Hearts spawn at random locations with minimum distance between them
+ * @param {number} count - Number of hearts to spawn (default 3)
+ * @returns {Array} Array of heart objects [{id, x, y, captured: false}, ...]
+ */
+function spawnHearts(count = 3) {
+  const hearts = [];
+  const padding = PLAYER_RADIUS + HEART_RADIUS + 10; // Keep away from arena edges
+  const maxAttempts = 100;
+
+  for (let i = 0; i < count; i++) {
+    let attempts = 0;
+    let validPosition = null;
+
+    while (attempts < maxAttempts) {
+      // Generate random position within padded arena bounds
+      const x = padding + Math.random() * (ARENA_WIDTH - 2 * padding);
+      const y = padding + Math.random() * (ARENA_HEIGHT - 2 * padding);
+
+      // Check distance from all existing hearts
+      let isValid = true;
+      for (const heart of hearts) {
+        const dx = x - heart.x;
+        const dy = y - heart.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < MIN_HEART_DISTANCE) {
+          isValid = false;
+          break;
+        }
+      }
+
+      if (isValid) {
+        validPosition = { x, y };
+        break;
+      }
+
+      attempts++;
+    }
+
+    // Fallback: if no valid position found after max attempts, use spaced grid
+    if (!validPosition) {
+      const gridX = (i + 1) * (ARENA_WIDTH / (count + 1));
+      const gridY = ARENA_HEIGHT / 2 + (Math.random() - 0.5) * 200;
+      validPosition = { x: gridX, y: gridY };
+    }
+
+    hearts.push({
+      id: i,
+      x: validPosition.x,
+      y: validPosition.y,
+      captured: false,
+      capturedBy: null,
+    });
+  }
+
+  return hearts;
+}
+
+/**
+ * Check if a player is touching a heart (for capture)
+ * @param {Object} player - Player object with {x, y}
+ * @param {Object} heart - Heart object with {x, y, captured}
+ * @returns {boolean} True if player is touching the heart
+ */
+function isPlayerTouchingHeart(player, heart) {
+  if (heart.captured) return false;
+
+  const dx = player.x - heart.x;
+  const dy = player.y - heart.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  // Player captures heart if their circle overlaps with heart
+  return distance <= (PLAYER_RADIUS + HEART_RADIUS);
+}
+
+/**
+ * Process heart captures for all alive players
+ * @param {Array} players - Array of player objects
+ * @param {Array} hearts - Array of heart objects
+ * @returns {Array} Array of capture events [{playerId, heartId}, ...]
+ */
+function processHeartCaptures(players, hearts) {
+  const captures = [];
+  const alive = players.filter(p => p.alive);
+
+  for (const player of alive) {
+    for (const heart of hearts) {
+      if (!heart.captured && isPlayerTouchingHeart(player, heart)) {
+        heart.captured = true;
+        heart.capturedBy = player.id;
+        captures.push({
+          playerId: player.id,
+          heartId: heart.id,
+        });
+      }
+    }
+  }
+
+  return captures;
+}
+
+// ============================================
 // Exports
 // ============================================
 
@@ -471,4 +590,9 @@ module.exports = {
   calculateSpawnPositions,
   shuffleRoles,
   seededRandom,
+
+  // Showdown mode
+  spawnHearts,
+  processHeartCaptures,
+  HEART_RADIUS,
 };

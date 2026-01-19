@@ -1,9 +1,9 @@
 # RPS-ARENA Production Launch Checklist
 
 > **Status**: IN PROGRESS
-> **Last Updated**: 2026-01-18
+> **Last Updated**: 2026-01-19
 > **Current Phase**: Phase 6 - Testing & Validation
-> **Note**: Phases 1-5 complete. Ready for testing and deployment.
+> **Note**: Phases 1-5 complete. Ready for testing and deployment. Showdown mode implemented.
 
 This is the master checklist for taking RPS-ARENA from test/prototype to a live production game. Each item must be completed and checked off before launch.
 
@@ -409,6 +409,7 @@ This approach is MORE secure than removal because:
 - [ ] **Improved result screen** with stats
 
 ### 8.2 Game Features
+- [x] **Showdown mode** - ✅ When 2 players remain, 3 hearts spawn; first to capture 2 wins (prevents deterministic RPS outcomes)
 - [ ] **Spectator mode** - Watch ongoing matches
 - [ ] **Match replays** - Using logged match events
 - [ ] **Private lobbies** with invite codes

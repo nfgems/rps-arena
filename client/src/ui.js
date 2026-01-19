@@ -25,6 +25,9 @@ const UI = (function () {
   let devMode = false;
   let spawnPosition = { x: 800, y: 450 }; // Default to center, updated by role assignment
 
+  // Showdown mode state
+  let showdownState = null; // { hearts: [], scores: {}, showText: bool, textProgress: number, freezeEndTime: number }
+
   /**
    * Initialize UI
    */
@@ -154,6 +157,8 @@ const UI = (function () {
     Network.addEventListener('PLAYER_DISCONNECT', handlePlayerDisconnect);
     Network.addEventListener('PLAYER_RECONNECT', handlePlayerReconnect);
     Network.addEventListener('RECONNECT_STATE', handleReconnectState);
+    Network.addEventListener('SHOWDOWN_START', handleShowdownStart);
+    Network.addEventListener('HEART_CAPTURED', handleHeartCaptured);
 
     // Wallet change handlers - prevent account switching during active match
     window.addEventListener('wallet:accountChanged', handleWalletAccountChanged);
@@ -402,6 +407,7 @@ const UI = (function () {
     // Reset state
     currentLobbyId = null;
     myRole = null;
+    showdownState = null; // Reset showdown state
     Interpolation.reset();
   }
 
@@ -474,6 +480,53 @@ const UI = (function () {
         Interpolation.markPlayerDisconnected(player.id, 0);
       }
     }
+  }
+
+  function handleShowdownStart(data) {
+    console.log('SHOWDOWN started!', data);
+
+    // Initialize showdown state
+    showdownState = {
+      hearts: data.hearts.map(h => ({ ...h, captured: false })),
+      scores: {},
+      showText: true,
+      textProgress: 0,
+      freezeEndTime: Date.now() + data.freezeDuration,
+    };
+
+    // Animate the text appearance
+    const startTime = Date.now();
+    const textDuration = data.freezeDuration * 0.8; // Text visible for 80% of freeze time
+
+    function animateText() {
+      if (!showdownState) return;
+
+      const elapsed = Date.now() - startTime;
+      showdownState.textProgress = Math.min(1, elapsed / 300); // Quick scale-in over 300ms
+
+      // Hide text after duration
+      if (elapsed >= textDuration) {
+        showdownState.showText = false;
+      } else {
+        requestAnimationFrame(animateText);
+      }
+    }
+    animateText();
+  }
+
+  function handleHeartCaptured(data) {
+    console.log('Heart captured:', data);
+
+    if (!showdownState) return;
+
+    // Mark heart as captured
+    const heart = showdownState.hearts.find(h => h.id === data.heartId);
+    if (heart) {
+      heart.captured = true;
+    }
+
+    // Update player score
+    showdownState.scores[data.playerId] = data.playerScore;
   }
 
   function handleWalletAccountChanged(event) {
@@ -689,7 +742,7 @@ const UI = (function () {
   function startGameLoop() {
     if (gameLoopId) return; // Prevent multiple game loops
 
-    const gameState = { effects: [] };
+    const gameState = { effects: [], showdown: null, localPlayerId: null };
 
     function loop() {
       // Update local player position based on input
@@ -704,6 +757,10 @@ const UI = (function () {
         const clamped = clampToArena(target.x, target.y);
         Interpolation.updateLocalPosition(clamped.x, clamped.y);
       }
+
+      // Update game state with showdown info
+      gameState.showdown = showdownState;
+      gameState.localPlayerId = Network.getUserId();
 
       // Render
       Renderer.render(gameState);

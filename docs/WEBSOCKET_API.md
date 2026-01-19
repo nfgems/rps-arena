@@ -255,8 +255,54 @@ Sent when same-role players collide (they bounce apart).
 }
 ```
 
+### SHOWDOWN_START
+Sent when only 2 players remain after an elimination. Triggers showdown mode where players race to collect hearts instead of RPS combat.
+
+```json
+{
+  "type": "SHOWDOWN_START",
+  "hearts": [
+    { "id": 0, "x": 400.5, "y": 300.25 },
+    { "id": 1, "x": 800.0, "y": 600.5 },
+    { "id": 2, "x": 1200.75, "y": 450.0 }
+  ],
+  "freezeDuration": 1500
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hearts` | array | 3 hearts with id and position |
+| `freezeDuration` | number | ms players are frozen (for "SHOWDOWN" text) |
+
+**Showdown Rules:**
+- Combat is disabled (collisions bounce instead of eliminating)
+- First player to capture 2 of 3 hearts wins
+- Hearts are captured instantly on touch
+- Players are frozen during `freezeDuration` then can move
+
+### HEART_CAPTURED
+Sent when a player captures a heart during showdown.
+
+```json
+{
+  "type": "HEART_CAPTURED",
+  "playerId": "uuid-of-capturer",
+  "heartId": 1,
+  "playerScore": 1
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `playerId` | string | Player who captured the heart |
+| `heartId` | number | ID of the captured heart (0-2) |
+| `playerScore` | number | Player's total hearts captured |
+
+When `playerScore` reaches 2, that player wins and `MATCH_END` follows.
+
 ### MATCH_END
-Sent when match ends (one player remaining or all disconnected).
+Sent when match ends (one player remaining, all disconnected, or showdown winner).
 
 ```json
 {
@@ -388,6 +434,22 @@ Client                          Server
   |<----------- BOUNCE ------------|  (if same-role collision)
   |<----------- SNAPSHOT ----------|
   |<---------- MATCH_END ----------|
+```
+
+### Showdown Mode (When 2 Players Remain)
+```
+Client                          Server
+  |<--------- ELIMINATION ---------|  (first player eliminated)
+  |<------- SHOWDOWN_START --------|  (3 hearts spawn, players frozen)
+  |                                |
+  | (1.5s freeze for "SHOWDOWN")   |
+  |                                |
+  |-- INPUT ---------------------->|  (players can move again)
+  |<----------- SNAPSHOT ----------|
+  |<------- HEART_CAPTURED --------|  (player touches heart)
+  |<----------- SNAPSHOT ----------|
+  |<------- HEART_CAPTURED --------|  (same player gets 2nd heart)
+  |<---------- MATCH_END ----------|  (player with 2 hearts wins)
 ```
 
 ### Refund Flow

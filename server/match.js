@@ -34,6 +34,10 @@ const MAX_TICK_STALENESS = 2000; // 2 seconds (60 ticks at 30Hz)
 // Reconnection grace period (seconds) - how long a disconnected player can reconnect before elimination
 const RECONNECT_GRACE_PERIOD = parseInt(process.env.RECONNECT_GRACE_PERIOD || '30', 10);
 
+// Showdown mode constants
+const SHOWDOWN_FREEZE_DURATION = 1500; // 1.5 seconds freeze when showdown starts
+const SHOWDOWN_HEARTS_TO_WIN = 2; // First player to capture this many hearts wins
+
 // ============================================
 // State Persistence (Crash Recovery)
 // ============================================
@@ -551,7 +555,7 @@ function processTick(match) {
     player.y = newPos.y;
   }
 
-  // 4. Process collisions
+  // 4. Process collisions (in showdown mode, all collisions result in bounce)
   // Debug: Log player states EVERY tick when 2 remain (throttled to every 30 ticks = 1 second)
   if (DEBUG_MATCH && stillAlive.length === 2) {
     const p1 = stillAlive[0];
@@ -561,11 +565,44 @@ function processTick(match) {
     const dist = Math.sqrt(dx * dx + dy * dy);
     // Log every second when 2 players, or every tick if within 60 pixels
     if (match.tick % 30 === 0 || dist < 60) {
-      console.log(`[FINAL2] Tick ${match.tick}: ${p1.role}(${p1.id.slice(-4)}) pos=(${p1.x.toFixed(0)},${p1.y.toFixed(0)}) vs ${p2.role}(${p2.id.slice(-4)}) pos=(${p2.x.toFixed(0)},${p2.y.toFixed(0)}), dist=${dist.toFixed(1)}, overlap=${dist <= physics.PLAYER_RADIUS * 2}`);
+      console.log(`[FINAL2] Tick ${match.tick}: ${p1.role}(${p1.id.slice(-4)}) pos=(${p1.x.toFixed(0)},${p1.y.toFixed(0)}) vs ${p2.role}(${p2.id.slice(-4)}) pos=(${p2.x.toFixed(0)},${p2.y.toFixed(0)}), dist=${dist.toFixed(1)}, overlap=${dist <= physics.PLAYER_RADIUS * 2}${match.showdown ? ' [SHOWDOWN]' : ''}`);
     }
   }
 
-  const collisionResult = physics.processCollisions(match.players);
+  const collisionResult = physics.processCollisions(match.players, !!match.showdown);
+
+  // 4b. Process showdown heart captures (if in showdown mode and not frozen)
+  if (match.showdown && !match.showdown.frozen) {
+    const captures = physics.processHeartCaptures(match.players, match.showdown.hearts);
+
+    for (const capture of captures) {
+      // Update player score
+      if (!match.showdown.scores[capture.playerId]) {
+        match.showdown.scores[capture.playerId] = 0;
+      }
+      match.showdown.scores[capture.playerId]++;
+
+      const playerScore = match.showdown.scores[capture.playerId];
+
+      // Broadcast heart capture
+      const captureMsg = protocol.createHeartCaptured(capture.playerId, capture.heartId, playerScore);
+      broadcastToMatch(match, captureMsg);
+
+      if (DEBUG_MATCH) {
+        console.log(`[SHOWDOWN] Player ${capture.playerId.slice(-4)} captured heart ${capture.heartId}, score: ${playerScore}/${SHOWDOWN_HEARTS_TO_WIN}`);
+      }
+
+      // Check if player won by capturing enough hearts
+      if (playerScore >= SHOWDOWN_HEARTS_TO_WIN) {
+        const winner = match.players.find(p => p.id === capture.playerId);
+        if (DEBUG_MATCH) console.log(`[SHOWDOWN] Winner: ${winner.id.slice(-4)} with ${playerScore} hearts!`);
+        endMatch(match, winner, 'showdown_winner').catch(err => {
+          console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
+        });
+        return;
+      }
+    }
+  }
 
   // Debug: Log collision result when 2 players remain
   if (DEBUG_MATCH && stillAlive.length === 2 && collisionResult.type !== 'none') {
@@ -597,11 +634,18 @@ function processTick(match) {
       const elimMsg = protocol.createElimination(match.tick, elim.loserId, elim.winnerId);
       broadcastToMatch(match, elimMsg);
     }
+
+    // Check if we should trigger showdown mode (2 players remaining after elimination)
+    const aliveAfterElim = match.players.filter(p => p.alive);
+    if (aliveAfterElim.length === 2 && !match.showdown) {
+      triggerShowdown(match);
+      return; // Skip normal win check - showdown will determine winner
+    }
   }
 
-  // 5. Check win condition after collisions
+  // 5. Check win condition after collisions (only if not in showdown)
   const finalAlive = match.players.filter(p => p.alive);
-  if (finalAlive.length <= 1) {
+  if (finalAlive.length <= 1 && !match.showdown) {
     if (DEBUG_MATCH) console.log(`[DEBUG] Match ending - winner: ${finalAlive[0]?.id || 'none'}, reason: last_standing`);
     endMatch(match, finalAlive[0] || null, 'last_standing').catch(err => {
       console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
@@ -854,7 +898,13 @@ function processInput(matchId, userId, input) {
 
   player.targetX = targetX;
   player.targetY = targetY;
-  player.frozen = input.frozen || false;
+
+  // In showdown mode, server controls frozen state - ignore client frozen flag
+  // Outside showdown, respect client frozen flag
+  if (!match.showdown) {
+    player.frozen = input.frozen || false;
+  }
+  // Note: In showdown, player.frozen is managed by triggerShowdown() and its timeout
 }
 
 // ============================================
@@ -992,10 +1042,14 @@ function checkGracePeriodExpirations(match) {
         const eliminationMsg = protocol.createElimination(match.tick, player.id, null);
         broadcastToMatch(match, eliminationMsg);
 
-        // Check if match should end
+        // Check if match should end or trigger showdown
         const aliveCount = match.players.filter(p => p.alive).length;
         if (aliveCount <= 1) {
           return true; // Signal that match should end
+        }
+        // Trigger showdown if exactly 2 players remain after disconnect elimination
+        if (aliveCount === 2 && !match.showdown) {
+          triggerShowdown(match);
         }
       }
     }
@@ -1129,6 +1183,51 @@ function stopHealthMonitor() {
     healthMonitorInterval = null;
     console.log('[HEALTH_MONITOR] Stopped game loop health monitor');
   }
+}
+
+// ============================================
+// Showdown Mode
+// ============================================
+
+/**
+ * Trigger showdown mode when 2 players remain
+ * Spawns hearts and freezes players for dramatic effect
+ * @param {Object} match - Match object
+ */
+function triggerShowdown(match) {
+  console.log(`[SHOWDOWN] Triggering showdown for match ${match.id}`);
+
+  // Spawn hearts at random positions
+  const hearts = physics.spawnHearts(3);
+
+  // Initialize showdown state on match object
+  match.showdown = {
+    hearts: hearts,
+    scores: {}, // playerId -> hearts captured
+    frozen: true, // Players frozen during "SHOWDOWN" text
+    frozenUntil: Date.now() + SHOWDOWN_FREEZE_DURATION,
+  };
+
+  // Freeze both remaining players
+  for (const player of match.players.filter(p => p.alive)) {
+    player.frozen = true;
+  }
+
+  // Broadcast showdown start to all clients
+  const showdownMsg = protocol.createShowdownStart(hearts, SHOWDOWN_FREEZE_DURATION);
+  broadcastToMatch(match, showdownMsg);
+
+  // Schedule unfreeze after freeze duration
+  setTimeout(() => {
+    if (match.showdown && match.status === 'running') {
+      match.showdown.frozen = false;
+      // Unfreeze players
+      for (const player of match.players.filter(p => p.alive)) {
+        player.frozen = false;
+      }
+      if (DEBUG_MATCH) console.log(`[SHOWDOWN] Players unfrozen, race begins!`);
+    }
+  }, SHOWDOWN_FREEZE_DURATION);
 }
 
 /**

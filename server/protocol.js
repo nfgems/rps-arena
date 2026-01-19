@@ -33,6 +33,8 @@ const ServerMessages = {
   PLAYER_RECONNECT: 'PLAYER_RECONNECT',
   RECONNECT_STATE: 'RECONNECT_STATE',
   TOKEN_UPDATE: 'TOKEN_UPDATE',
+  SHOWDOWN_START: 'SHOWDOWN_START',
+  HEART_CAPTURED: 'HEART_CAPTURED',
 };
 
 // ============================================
@@ -453,6 +455,42 @@ function createTokenUpdate(newToken) {
   });
 }
 
+/**
+ * Create showdown start message
+ * Sent when only 2 players remain - triggers showdown mode
+ * @param {Array} hearts - Array of heart positions [{id, x, y}, ...]
+ * @param {number} freezeDuration - How long players are frozen (ms)
+ * @returns {string} JSON message
+ */
+function createShowdownStart(hearts, freezeDuration) {
+  return JSON.stringify({
+    type: ServerMessages.SHOWDOWN_START,
+    hearts: hearts.map(h => ({
+      id: h.id,
+      x: Math.round(h.x * 100) / 100,
+      y: Math.round(h.y * 100) / 100,
+    })),
+    freezeDuration,
+  });
+}
+
+/**
+ * Create heart captured message
+ * Sent when a player captures a heart
+ * @param {string} playerId - ID of player who captured the heart
+ * @param {number} heartId - ID of the captured heart
+ * @param {number} playerScore - Player's new score (hearts captured)
+ * @returns {string} JSON message
+ */
+function createHeartCaptured(playerId, heartId, playerScore) {
+  return JSON.stringify({
+    type: ServerMessages.HEART_CAPTURED,
+    playerId,
+    heartId,
+    playerScore,
+  });
+}
+
 // ============================================
 // Utilities
 // ============================================
@@ -504,4 +542,6 @@ module.exports = {
   createPlayerReconnect,
   createReconnectState,
   createTokenUpdate,
+  createShowdownStart,
+  createHeartCaptured,
 };
