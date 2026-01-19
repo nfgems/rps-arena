@@ -161,6 +161,7 @@ const UI = (function () {
     Network.addEventListener('PLAYER_RECONNECT', handlePlayerReconnect);
     Network.addEventListener('RECONNECT_STATE', handleReconnectState);
     Network.addEventListener('SHOWDOWN_START', handleShowdownStart);
+    Network.addEventListener('SHOWDOWN_READY', handleShowdownReady);
     Network.addEventListener('HEART_CAPTURED', handleHeartCaptured);
 
     // Wallet change handlers - prevent account switching during active match
@@ -420,14 +421,11 @@ Expiration Time: ${expirationTime}`;
 
   function handleMatchEnd(data) {
     Input.stopSending();
-    stopGameLoop();
-    Input.destroy();
-    Renderer.destroy();
 
     const myId = Network.getUserId();
     const isWinner = data.winnerId === myId;
 
-    // Update result screen
+    // Update result screen content (but don't show yet)
     const title = document.getElementById('result-title');
     title.textContent = isWinner ? 'VICTORY!' : 'DEFEATED';
     title.className = isWinner ? 'victory' : 'defeat';
@@ -444,13 +442,22 @@ Expiration Time: ${expirationTime}`;
       devResetBtn.classList.add('hidden');
     }
 
-    showScreen('result');
+    // Delay showing result screen so player can see the final heart capture
+    // Game loop keeps running briefly for visual feedback
+    const showResultDelay = showdownState ? 500 : 0; // 500ms delay if in showdown mode
 
-    // Reset state
-    currentLobbyId = null;
-    myRole = null;
-    showdownState = null; // Reset showdown state
-    Interpolation.reset();
+    setTimeout(() => {
+      stopGameLoop();
+      Input.destroy();
+      Renderer.destroy();
+      showScreen('result');
+
+      // Reset state
+      currentLobbyId = null;
+      myRole = null;
+      showdownState = null;
+      Interpolation.reset();
+    }, showResultDelay);
   }
 
   function handleRefundProcessed(data) {
@@ -525,35 +532,19 @@ Expiration Time: ${expirationTime}`;
   }
 
   function handleShowdownStart(data) {
-    console.log('SHOWDOWN started!', data);
+    // Legacy handler - no longer used but kept for compatibility
+    console.log('SHOWDOWN_START received (legacy)', data);
+  }
 
-    // Initialize showdown state
+  function handleShowdownReady(data) {
+    console.log('SHOWDOWN - hearts spawned, race begins!', data);
+
+    // Initialize showdown state with hearts immediately grabbable
     showdownState = {
       hearts: data.hearts.map(h => ({ ...h, captured: false })),
       scores: {},
-      showText: true,
-      textProgress: 0,
-      freezeEndTime: Date.now() + data.freezeDuration,
+      showText: false, // No text overlay - just show hearts
     };
-
-    // Animate the text appearance
-    const startTime = Date.now();
-    const textDuration = data.freezeDuration * 0.8; // Text visible for 80% of freeze time
-
-    function animateText() {
-      if (!showdownState) return;
-
-      const elapsed = Date.now() - startTime;
-      showdownState.textProgress = Math.min(1, elapsed / 300); // Quick scale-in over 300ms
-
-      // Hide text after duration
-      if (elapsed >= textDuration) {
-        showdownState.showText = false;
-      } else {
-        requestAnimationFrame(animateText);
-      }
-    }
-    animateText();
   }
 
   function handleHeartCaptured(data) {

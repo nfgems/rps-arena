@@ -517,23 +517,77 @@ function spawnHearts(count = 3) {
 
 /**
  * Check if a player is touching a heart (for capture)
- * @param {Object} player - Player object with {x, y}
+ * Uses multiple checks: current position, target position, and swept collision
+ * @param {Object} player - Player object with {x, y, prevX, prevY, targetX, targetY}
  * @param {Object} heart - Heart object with {x, y, captured}
- * @returns {boolean} True if player is touching the heart
+ * @returns {boolean} True if player is touching or passed through the heart
  */
 function isPlayerTouchingHeart(player, heart) {
   if (heart.captured) return false;
 
+  const captureRadius = PLAYER_RADIUS + HEART_RADIUS;
+
+  // Check current position
   const dx = player.x - heart.x;
   const dy = player.y - heart.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
+  const currentDist = Math.sqrt(dx * dx + dy * dy);
 
-  // Player captures heart if their circle overlaps with heart
-  return distance <= (PLAYER_RADIUS + HEART_RADIUS);
+  if (currentDist <= captureRadius) {
+    return true;
+  }
+
+  // Check if player's TARGET (mouse position) is on the heart
+  // This makes capture feel instant when you click/hover on a heart
+  if (player.targetX !== undefined && player.targetY !== undefined) {
+    const targetDx = player.targetX - heart.x;
+    const targetDy = player.targetY - heart.y;
+    const targetDist = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+
+    // If mouse is on the heart and player is close enough to reach it this tick
+    if (targetDist <= captureRadius && currentDist <= captureRadius + MAX_DELTA_PER_TICK) {
+      return true;
+    }
+  }
+
+  // Swept collision: check if player passed through heart during movement
+  // Heart is stationary, so we check if the line segment from prevPos to currentPos
+  // comes within captureRadius of the heart center
+  const prevX = player.prevX ?? player.x;
+  const prevY = player.prevY ?? player.y;
+
+  // Vector from prev to current position
+  const moveX = player.x - prevX;
+  const moveY = player.y - prevY;
+  const moveLengthSq = moveX * moveX + moveY * moveY;
+
+  // If player didn't move, only current position matters (already checked)
+  if (moveLengthSq < 0.001) {
+    return false;
+  }
+
+  // Vector from prev position to heart center
+  const toHeartX = heart.x - prevX;
+  const toHeartY = heart.y - prevY;
+
+  // Project heart onto movement line: t = dot(toHeart, move) / |move|^2
+  // t=0 is at prevPos, t=1 is at currentPos
+  const t = Math.max(0, Math.min(1, (toHeartX * moveX + toHeartY * moveY) / moveLengthSq));
+
+  // Closest point on movement line segment to heart
+  const closestX = prevX + t * moveX;
+  const closestY = prevY + t * moveY;
+
+  // Distance from closest point to heart
+  const closestDx = closestX - heart.x;
+  const closestDy = closestY - heart.y;
+  const closestDist = Math.sqrt(closestDx * closestDx + closestDy * closestDy);
+
+  return closestDist <= captureRadius;
 }
 
 /**
  * Process heart captures for all alive players
+ * Uses swept collision detection to catch fast-moving players
  * @param {Array} players - Array of player objects
  * @param {Array} hearts - Array of heart objects
  * @returns {Array} Array of capture events [{playerId, heartId}, ...]

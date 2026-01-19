@@ -30,7 +30,8 @@
       "Bash(cmd //c \"taskkill /PID 49136 /F\")",
       "Bash(cmd //c \"taskkill /PID 48224 /F\")",
       "Bash(cmd //c \"del /f nul\")",
-      "Bash(cmd //c \"del \\\\?\\\\c:\\\\Users\\\\evank\\\\OneDrive\\\\Documents\\\\RPS-ARENA\\\\nul\")"
+      "Bash(cmd //c \"del \\\\?\\\\c:\\\\Users\\\\evank\\\\OneDrive\\\\Documents\\\\RPS-ARENA\\\\nul\")",
+      "Bash(pkill:*)"
     ]
   }
 }

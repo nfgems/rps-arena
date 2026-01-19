@@ -34,6 +34,7 @@ const ServerMessages = {
   RECONNECT_STATE: 'RECONNECT_STATE',
   TOKEN_UPDATE: 'TOKEN_UPDATE',
   SHOWDOWN_START: 'SHOWDOWN_START',
+  SHOWDOWN_READY: 'SHOWDOWN_READY',
   HEART_CAPTURED: 'HEART_CAPTURED',
 };
 
@@ -457,20 +458,31 @@ function createTokenUpdate(newToken) {
 
 /**
  * Create showdown start message
- * Sent when only 2 players remain - triggers showdown mode
- * @param {Array} hearts - Array of heart positions [{id, x, y}, ...]
+ * Sent when only 2 players remain - triggers showdown mode (freeze phase, no hearts yet)
  * @param {number} freezeDuration - How long players are frozen (ms)
  * @returns {string} JSON message
  */
-function createShowdownStart(hearts, freezeDuration) {
+function createShowdownStart(freezeDuration) {
   return JSON.stringify({
     type: ServerMessages.SHOWDOWN_START,
+    freezeDuration,
+  });
+}
+
+/**
+ * Create showdown ready message
+ * Sent when freeze ends - hearts appear and race begins
+ * @param {Array} hearts - Array of heart positions [{id, x, y}, ...]
+ * @returns {string} JSON message
+ */
+function createShowdownReady(hearts) {
+  return JSON.stringify({
+    type: ServerMessages.SHOWDOWN_READY,
     hearts: hearts.map(h => ({
       id: h.id,
       x: Math.round(h.x * 100) / 100,
       y: Math.round(h.y * 100) / 100,
     })),
-    freezeDuration,
   });
 }
 
@@ -543,5 +555,6 @@ module.exports = {
   createReconnectState,
   createTokenUpdate,
   createShowdownStart,
+  createShowdownReady,
   createHeartCaptured,
 };

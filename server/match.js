@@ -580,6 +580,21 @@ function processTick(match) {
 
   // 4b. Process showdown heart captures (if in showdown mode and not frozen)
   if (match.showdown && !match.showdown.frozen) {
+    // Log every tick when player is close to a heart (for debugging)
+    for (const player of stillAlive) {
+      for (const heart of match.showdown.hearts) {
+        if (!heart.captured) {
+          const dx = player.x - heart.x;
+          const dy = player.y - heart.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const captureThreshold = physics.PLAYER_RADIUS + physics.HEART_RADIUS;
+          if (dist < 80) {
+            console.log(`[HEART] Tick ${match.tick}: Player at (${player.x.toFixed(0)},${player.y.toFixed(0)}) prev=(${player.prevX?.toFixed(0) ?? 'null'},${player.prevY?.toFixed(0) ?? 'null'}) dist=${dist.toFixed(1)} to heart ${heart.id} at (${heart.x.toFixed(0)},${heart.y.toFixed(0)}), threshold=${captureThreshold}`);
+          }
+        }
+      }
+    }
+
     const captures = physics.processHeartCaptures(match.players, match.showdown.hearts);
 
     for (const capture of captures) {
@@ -595,14 +610,18 @@ function processTick(match) {
       const captureMsg = protocol.createHeartCaptured(capture.playerId, capture.heartId, playerScore);
       broadcastToMatch(match, captureMsg);
 
-      if (DEBUG_MATCH) {
-        console.log(`[SHOWDOWN] Player ${capture.playerId.slice(-4)} captured heart ${capture.heartId}, score: ${playerScore}/${SHOWDOWN_HEARTS_TO_WIN}`);
-      }
+      // Always log heart captures for debugging
+      console.log(`[SHOWDOWN] Player ${capture.playerId.slice(-4)} captured heart ${capture.heartId}, score: ${playerScore}/${SHOWDOWN_HEARTS_TO_WIN}`);
 
       // Check if player won by capturing enough hearts
       if (playerScore >= SHOWDOWN_HEARTS_TO_WIN) {
         const winner = match.players.find(p => p.id === capture.playerId);
         if (DEBUG_MATCH) console.log(`[SHOWDOWN] Winner: ${winner.id.slice(-4)} with ${playerScore} hearts!`);
+
+        // Send final snapshot before ending match so client sees player at heart position
+        const finalSnapshot = protocol.createSnapshot(match.tick, match.players);
+        broadcastToMatch(match, finalSnapshot);
+
         endMatch(match, winner, 'showdown_winner').catch(err => {
           console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
         });
@@ -1222,37 +1241,21 @@ function stopHealthMonitor() {
 function triggerShowdown(match) {
   console.log(`[SHOWDOWN] Triggering showdown for match ${match.id}`);
 
-  // Spawn hearts at random positions
+  // Spawn hearts immediately
   const hearts = physics.spawnHearts(3);
 
-  // Initialize showdown state on match object
+  // Initialize showdown state - no freeze, hearts grabbable immediately
   match.showdown = {
     hearts: hearts,
     scores: {}, // playerId -> hearts captured
-    frozen: true, // Players frozen during "SHOWDOWN" text
-    frozenUntil: Date.now() + SHOWDOWN_FREEZE_DURATION,
+    frozen: false, // No freeze - players can grab hearts immediately
   };
 
-  // Freeze both remaining players
-  for (const player of match.players.filter(p => p.alive)) {
-    player.frozen = true;
-  }
-
-  // Broadcast showdown start to all clients
-  const showdownMsg = protocol.createShowdownStart(hearts, SHOWDOWN_FREEZE_DURATION);
+  // Broadcast showdown with hearts - race begins immediately!
+  const showdownMsg = protocol.createShowdownReady(hearts);
   broadcastToMatch(match, showdownMsg);
 
-  // Schedule unfreeze after freeze duration
-  setTimeout(() => {
-    if (match.showdown && match.status === 'running') {
-      match.showdown.frozen = false;
-      // Unfreeze players
-      for (const player of match.players.filter(p => p.alive)) {
-        player.frozen = false;
-      }
-      if (DEBUG_MATCH) console.log(`[SHOWDOWN] Players unfrozen, race begins!`);
-    }
-  }, SHOWDOWN_FREEZE_DURATION);
+  console.log(`[SHOWDOWN] Hearts spawned, race begins immediately!`);
 }
 
 /**
