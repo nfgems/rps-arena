@@ -78,6 +78,7 @@ function setupSharedRoutes(expressApp) {
   // Authentication endpoint
   expressApp.post('/api/auth', async (req, res) => {
     const { walletAddress, signature, message } = req.body;
+    console.log('Auth request received:', { walletAddress, hasSignature: !!signature, hasMessage: !!message });
 
     const result = await auth.authenticateWallet(walletAddress, signature, message);
 

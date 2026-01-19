@@ -163,14 +163,15 @@ const Wallet = (function () {
         throw new Error('No accounts found');
       }
 
-      address = accounts[0];
-
-      // Check and switch to Base network
-      await switchToBase();
-
       // Create ethers provider and signer
       provider = new ethers.BrowserProvider(selectedProvider);
       signer = await provider.getSigner();
+
+      // Get checksummed address from signer (EIP-55 format required for SIWE)
+      address = await signer.getAddress();
+
+      // Check and switch to Base network
+      await switchToBase();
 
       connected = true;
 
