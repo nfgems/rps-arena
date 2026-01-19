@@ -4,48 +4,57 @@
  */
 
 const { ethers } = require('ethers');
+const { SiweMessage } = require('siwe');
 const db = require('./database');
 const session = require('./session');
 
 /**
- * Generate a sign-in message for wallet signature
- * @param {number} timestamp - Unix timestamp
- * @returns {string} Message to sign
- */
-function getSignInMessage(timestamp) {
-  return `Sign in to RPS Arena: ${timestamp}`;
-}
-
-/**
- * Verify a wallet signature
+ * Verify a SIWE message and signature
  * @param {string} walletAddress - Claimed wallet address
  * @param {string} signature - Signature from wallet
- * @param {number} timestamp - Timestamp used in message
- * @returns {boolean} True if signature is valid
+ * @param {string} message - SIWE message string
+ * @returns {Object} { valid: boolean, error?: string }
  */
-function verifySignature(walletAddress, signature, timestamp) {
+async function verifySiweMessage(walletAddress, signature, message) {
   try {
-    const message = getSignInMessage(timestamp);
-    const recoveredAddress = ethers.verifyMessage(message, signature);
-    return recoveredAddress.toLowerCase() === walletAddress.toLowerCase();
+    const siweMessage = new SiweMessage(message);
+
+    // Verify the signature
+    const fields = await siweMessage.verify({ signature });
+
+    if (!fields.success) {
+      return { valid: false, error: 'Invalid signature' };
+    }
+
+    // Verify the address matches
+    if (siweMessage.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      return { valid: false, error: 'Address mismatch' };
+    }
+
+    // Check expiration
+    if (siweMessage.expirationTime && new Date(siweMessage.expirationTime) < new Date()) {
+      return { valid: false, error: 'Message expired' };
+    }
+
+    return { valid: true };
   } catch (error) {
-    console.error('Signature verification failed:', error.message);
-    return false;
+    console.error('SIWE verification failed:', error.message);
+    return { valid: false, error: 'Signature verification failed' };
   }
 }
 
 /**
- * Authenticate a user via wallet signature
+ * Authenticate a user via SIWE wallet signature
  * Creates user if not exists, returns session token
  *
  * @param {string} walletAddress - Ethereum address
  * @param {string} signature - Signed message
- * @param {number} timestamp - Timestamp from signed message
- * @returns {Object} { success, token, user, error }
+ * @param {string} message - SIWE message string
+ * @returns {Promise<Object>} { success, token, user, error }
  */
-function authenticateWallet(walletAddress, signature, timestamp) {
+async function authenticateWallet(walletAddress, signature, message) {
   // Validate inputs
-  if (!walletAddress || !signature || !timestamp) {
+  if (!walletAddress || !signature || !message) {
     return { success: false, error: 'Missing required parameters' };
   }
 
@@ -54,16 +63,10 @@ function authenticateWallet(walletAddress, signature, timestamp) {
     return { success: false, error: 'Invalid wallet address format' };
   }
 
-  // Check timestamp is recent (within 5 minutes)
-  const now = Date.now();
-  const fiveMinutes = 5 * 60 * 1000;
-  if (Math.abs(now - timestamp) > fiveMinutes) {
-    return { success: false, error: 'Timestamp expired' };
-  }
-
-  // Verify signature
-  if (!verifySignature(walletAddress, signature, timestamp)) {
-    return { success: false, error: 'Invalid signature' };
+  // Verify SIWE message and signature
+  const verification = await verifySiweMessage(walletAddress, signature, message);
+  if (!verification.valid) {
+    return { success: false, error: verification.error };
   }
 
   // Get or create user
@@ -117,8 +120,7 @@ function logout(token) {
 }
 
 module.exports = {
-  getSignInMessage,
-  verifySignature,
+  verifySiweMessage,
   authenticateWallet,
   validateAuth,
   logout,

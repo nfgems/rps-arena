@@ -205,9 +205,10 @@ async function recoverInterruptedMatches() {
 /**
  * Start a new match from a ready lobby
  * @param {number} lobbyId - Lobby ID
+ * @param {boolean} skipBalanceCheck - Skip wallet balance verification (admin/dev mode)
  * @returns {Object} Match object
  */
-async function startMatch(lobbyId) {
+async function startMatch(lobbyId, skipBalanceCheck = false) {
   // Acquire lock to prevent concurrent match starts from same lobby
   await lobby.acquireLobbyLock(lobbyId);
 
@@ -223,13 +224,18 @@ async function startMatch(lobbyId) {
     }
 
     // Check lobby wallet balance before starting match (should have 3 USDC from 3 players)
-    const lobbyBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
-    const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
-    if (BigInt(lobbyBalance.balance) < expectedBalance) {
-      console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${Number(expectedBalance) / 1_000_000} USDC expected from 3 players)`);
-      const err = new Error('INSUFFICIENT_LOBBY_BALANCE');
-      err.balance = lobbyBalance.formatted;
-      throw err;
+    // Skip this check in dev/admin mode where payments are bypassed
+    if (!skipBalanceCheck) {
+      const lobbyBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
+      const expectedBalance = BigInt(payments.BUY_IN_AMOUNT) * BigInt(3); // 3 USDC
+      if (BigInt(lobbyBalance.balance) < expectedBalance) {
+        console.error(`Insufficient lobby balance: ${lobbyBalance.formatted} USDC (need ${Number(expectedBalance) / 1_000_000} USDC expected from 3 players)`);
+        const err = new Error('INSUFFICIENT_LOBBY_BALANCE');
+        err.balance = lobbyBalance.formatted;
+        throw err;
+      }
+    } else {
+      console.log('DEV MODE: Skipping lobby balance check');
     }
 
     // Generate cryptographically secure RNG seed
@@ -278,6 +284,7 @@ async function startMatch(lobbyId) {
       countdownRemaining: config.COUNTDOWN_DURATION,
       gameLoopInterval: null,
       snapshotCounter: 0,
+      devMode: skipBalanceCheck, // Dev mode skips payouts
     };
 
     activeMatches.set(matchData.id, match);
@@ -686,6 +693,24 @@ async function endMatch(match, winner, reason) {
     // Process winner payout from lobby wallet
     const winnerPlayer = match.players.find(p => p.id === winner.id);
     const lobbyData = lobby.getLobby(match.lobbyId);
+
+    // DEV MODE: Skip actual payouts, just mark match as finished
+    if (match.devMode) {
+      console.log(`[DEV MODE] Skipping payout for match ${match.id}, winner: ${winnerPlayer.username}`);
+      match.status = 'finished';
+      db.setMatchWinner(match.id, winner.id, 0, 'dev_mode_no_payout');
+
+      // Send match end message to clients (with fake payout info for UI)
+      const endMsg = protocol.createMatchEnd(winner.id, {
+        winner: 2.4,
+        treasury: 0.6,
+      });
+      broadcastToMatch(match, endMsg);
+
+      // Reset lobby for next game
+      lobby.resetLobby(match.lobbyId);
+      return;
+    }
 
     // Note: Refunds come from lobby wallet (where deposits are), not treasury
     // Treasury only receives swept fees after successful matches

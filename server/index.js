@@ -76,10 +76,10 @@ function setupSharedRoutes(expressApp) {
   });
 
   // Authentication endpoint
-  expressApp.post('/api/auth', (req, res) => {
-    const { walletAddress, signature, timestamp } = req.body;
+  expressApp.post('/api/auth', async (req, res) => {
+    const { walletAddress, signature, message } = req.body;
 
-    const result = auth.authenticateWallet(walletAddress, signature, timestamp);
+    const result = await auth.authenticateWallet(walletAddress, signature, message);
 
     if (result.success) {
       res.json({

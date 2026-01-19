@@ -116,6 +116,9 @@ const UI = (function () {
     // Play again button
     document.getElementById('play-again-btn').addEventListener('click', handlePlayAgain);
 
+    // Dev reset button (only shown in dev mode)
+    document.getElementById('dev-reset-btn').addEventListener('click', handleDevReset);
+
     // Payment modal buttons
     document.getElementById('send-payment-btn').addEventListener('click', handleSendPayment);
     document.getElementById('cancel-join-btn').addEventListener('click', hidePaymentModal);
@@ -197,16 +200,32 @@ const UI = (function () {
       // Connect wallet
       const address = await Wallet.connect();
 
-      // Sign message for authentication
-      const timestamp = Date.now();
-      const message = `Sign in to RPS Arena: ${timestamp}`;
+      // Build SIWE message for authentication
+      const domain = window.location.host;
+      const origin = window.location.origin;
+      const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const issuedAt = new Date().toISOString();
+      const expirationTime = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
+
+      const message = `${domain} wants you to sign in with your Ethereum account:
+${address}
+
+Sign in to RPS Arena
+
+URI: ${origin}
+Version: 1
+Chain ID: 8453
+Nonce: ${nonce}
+Issued At: ${issuedAt}
+Expiration Time: ${expirationTime}`;
+
       const signature = await Wallet.signMessage(message);
 
       // Authenticate with server
       const response = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walletAddress: address, signature, timestamp }),
+        body: JSON.stringify({ walletAddress: address, signature, message }),
       });
 
       const data = await response.json();
@@ -254,6 +273,21 @@ const UI = (function () {
 
   function handlePlayAgain() {
     showScreen('lobby');
+  }
+
+  async function handleDevReset() {
+    // Reset lobby and go back to lobby screen for quick re-testing
+    try {
+      await fetch('/api/dev/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lobbyId: 1 }),
+      });
+      showScreen('lobby');
+    } catch (err) {
+      console.error('Dev reset failed:', err);
+      showScreen('lobby');
+    }
   }
 
   async function handleSendPayment() {
@@ -401,6 +435,14 @@ const UI = (function () {
     const payout = document.getElementById('result-payout');
     payout.textContent = isWinner ? '+2.4 USDC' : '';
     payout.className = isWinner ? 'payout' : 'payout none';
+
+    // Show dev reset button only in dev mode
+    const devResetBtn = document.getElementById('dev-reset-btn');
+    if (devMode) {
+      devResetBtn.classList.remove('hidden');
+    } else {
+      devResetBtn.classList.add('hidden');
+    }
 
     showScreen('result');
 
