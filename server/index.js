@@ -489,7 +489,8 @@ function checkRateLimit(ip, messageType) {
     rateLimits.set(ip, limits);
   }
 
-  if (messageType === 'INPUT') {
+  // INPUT and TUTORIAL_INPUT both use the higher input rate limit
+  if (messageType === 'INPUT' || messageType === 'TUTORIAL_INPUT') {
     limits.inputCount++;
     return limits.inputCount <= config.RATE_LIMIT_INPUT_PER_SEC;
   } else {
