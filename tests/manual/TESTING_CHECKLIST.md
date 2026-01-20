@@ -178,7 +178,7 @@ curl -X POST http://localhost:3001/api/bot/add \
 ## 6.2 Load Testing
 
 ### Targets
-- **Concurrent Players**: 30 (10 full lobbies)
+- **Concurrent Players**: 36 (12 full lobbies)
 - **Server CPU**: < 80%
 - **Server Memory**: < 512MB
 - **Game Loop**: Stable 30 Hz

@@ -46,7 +46,7 @@ Request to join a lobby with payment proof.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `lobbyId` | integer | Lobby ID (1-10) |
+| `lobbyId` | integer | Lobby ID (1-12) |
 | `paymentTxHash` | string | Ethereum tx hash (0x + 64 hex chars) |
 
 ### REQUEST_REFUND
@@ -128,7 +128,7 @@ List of all lobbies. Sent on connect and periodically.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | integer | Lobby ID (1-10) |
+| `id` | integer | Lobby ID (1-12) |
 | `status` | string | `"empty"`, `"waiting"`, `"ready"`, `"in_progress"` |
 | `playerCount` | integer | Current players (0-3) |
 | `timeRemaining` | number\|null | ms until timeout, null if not started |

@@ -304,7 +304,7 @@ adminApp.post('/api/bot/add', async (req, res) => {
 
   const parsedLobbyId = parseInt(lobbyId);
   if (!protocol.isValidLobbyId(parsedLobbyId)) {
-    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-10)' });
+    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-12)' });
   }
 
   const result = await bot.addBotToLobby(parsedLobbyId);
@@ -327,7 +327,7 @@ adminApp.post('/api/bot/fill', async (req, res) => {
 
   const parsedLobbyId = parseInt(lobbyId);
   if (!protocol.isValidLobbyId(parsedLobbyId)) {
-    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-10)' });
+    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-12)' });
   }
 
   const result = await bot.fillLobbyWithBots(parsedLobbyId);
@@ -352,7 +352,7 @@ adminApp.post('/api/dev/reset', async (req, res) => {
   const targetLobbyId = lobbyId ? parseInt(lobbyId) : 1;
 
   if (!protocol.isValidLobbyId(targetLobbyId)) {
-    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-10)' });
+    return res.status(400).json({ success: false, error: 'Invalid lobbyId (must be 1-12)' });
   }
 
   try {

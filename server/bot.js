@@ -42,7 +42,7 @@ function createBotUser() {
 
 /**
  * Add a bot to a specific lobby
- * @param {number} lobbyId - Lobby to join (1-10)
+ * @param {number} lobbyId - Lobby to join (1-12)
  * @returns {Object} Bot info or error
  */
 async function addBotToLobby(lobbyId) {

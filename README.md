@@ -13,7 +13,7 @@ RPS-ARENA is a competitive web-based game where three players battle in a physic
 - **Blockchain Payments** - 1 USDC entry fee, 2.4 USDC winner payout (Base network)
 - **Wallet Authentication** - Sign-In With Ethereum (SIWE)
 - **Showdown Mode** - Special end-game mechanic with heart collection
-- **10 Fixed Lobbies** - Pre-created lobbies with dedicated deposit wallets
+- **12 Fixed Lobbies** - Pre-created lobbies with dedicated deposit wallets
 - **Reconnection Support** - 30-second grace period during matches
 
 ## Tech Stack

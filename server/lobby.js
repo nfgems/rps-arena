@@ -20,11 +20,11 @@ const lobbyLocks = new Map();
 // ============================================
 
 /**
- * Initialize the 10 fixed lobbies
+ * Initialize the 12 fixed lobbies
  * Called once on server startup
  */
 async function initializeLobbies() {
-  const lobbyCount = parseInt(process.env.LOBBY_COUNT || '10');
+  const lobbyCount = parseInt(process.env.LOBBY_COUNT || '12');
   const existingLobbies = db.getAllLobbies();
 
   if (existingLobbies.length === lobbyCount) {
@@ -121,7 +121,7 @@ function getLobbyList() {
 
 /**
  * Get a specific lobby by ID
- * @param {number} lobbyId - Lobby ID (1-10)
+ * @param {number} lobbyId - Lobby ID (1-12)
  * @returns {Object|undefined} Lobby data or undefined if not found
  */
 function getLobby(lobbyId) {
@@ -175,7 +175,7 @@ function releaseLobbyLock(lobbyId) {
 /**
  * Process a player joining a lobby
  * @param {string} userId - User's UUID
- * @param {number} lobbyId - Lobby ID (1-10)
+ * @param {number} lobbyId - Lobby ID (1-12)
  * @param {string} paymentTxHash - Transaction hash of USDC payment
  * @param {string} userWalletAddress - User's wallet address
  * @param {boolean} skipPayment - Whether to skip payment verification (admin port)

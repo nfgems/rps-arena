@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TEXT NOT NULL
 );
 
--- Lobbies table (exactly 10 lobbies, created at server startup)
+-- Lobbies table (exactly 12 lobbies, created at server startup)
 CREATE TABLE IF NOT EXISTS lobbies (
-  id INTEGER PRIMARY KEY CHECK (id >= 1 AND id <= 10),
+  id INTEGER PRIMARY KEY CHECK (id >= 1 AND id <= 12),
   status TEXT DEFAULT 'empty' CHECK (status IN ('empty', 'waiting', 'ready', 'in_progress')),
   deposit_address TEXT NOT NULL,
   deposit_private_key_encrypted TEXT NOT NULL,

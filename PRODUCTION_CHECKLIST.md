@@ -40,7 +40,7 @@ This approach is MORE secure than removal because:
 ### 1.3 Input Validation ✅ COMPLETE (2026-01-17)
 - [x] **Validate WebSocket message types** against whitelist in `protocol.js` - ✅ Added VALID_CLIENT_MESSAGE_TYPES Set
 - [x] **Validate `targetX`/`targetY`** are numbers within arena bounds - ✅ isValidCoordinate() checks finite numbers 0-1600/0-900
-- [x] **Validate `lobbyId`** is integer 1-10 (or configured max) - ✅ isValidLobbyId() validates integer in range
+- [x] **Validate `lobbyId`** is integer 1-12 (or configured max) - ✅ isValidLobbyId() validates integer in range
 - [x] **Validate `paymentTxHash`** is valid Ethereum hash format (0x + 64 hex chars) - ✅ isValidTxHash() with regex (also accepts dev/bot hashes)
 - [x] **Add schema validation** for all incoming WebSocket messages - ✅ MESSAGE_VALIDATORS map with validators for each message type
 
@@ -345,7 +345,7 @@ This approach is MORE secure than removal because:
 - [ ] **Test reconnection** during match
 
 ### 6.2 Load Testing
-- [ ] **Simulate 30 concurrent players** (10 full lobbies)
+- [ ] **Simulate 36 concurrent players** (12 full lobbies)
 - [ ] **Measure server CPU/memory** under load
 - [ ] **Test WebSocket connection limits**
 - [ ] **Verify game loop stability** at 30 Hz under load

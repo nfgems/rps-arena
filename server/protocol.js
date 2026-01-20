@@ -67,7 +67,7 @@ const ErrorCodes = {
 // Arena bounds (must match physics.js)
 const ARENA_WIDTH = parseInt(process.env.GAME_ARENA_WIDTH || '1600');
 const ARENA_HEIGHT = parseInt(process.env.GAME_ARENA_HEIGHT || '900');
-const LOBBY_COUNT = parseInt(process.env.LOBBY_COUNT || '10');
+const LOBBY_COUNT = parseInt(process.env.LOBBY_COUNT || '12');
 
 // Ethereum transaction hash regex: 0x followed by 64 hex characters
 const TX_HASH_REGEX = /^0x[a-fA-F0-9]{64}$/;

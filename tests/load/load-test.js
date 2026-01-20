@@ -1,7 +1,7 @@
 /**
  * RPS-ARENA Load Test
  *
- * Simulates 30 concurrent players across 10 lobbies to test:
+ * Simulates 36 concurrent players across 12 lobbies to test:
  * - WebSocket connection stability
  * - Server CPU/memory under load
  * - Game loop stability at 30 Hz
