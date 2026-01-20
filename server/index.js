@@ -647,16 +647,16 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
           handleInput(message);
           break;
 
-        case 'START_TUTORIAL':
+        case protocol.ClientMessages.START_TUTORIAL:
           console.log('[DEBUG] Received START_TUTORIAL message');
           handleStartTutorial();
           break;
 
-        case 'TUTORIAL_INPUT':
+        case protocol.ClientMessages.TUTORIAL_INPUT:
           handleTutorialInput(message);
           break;
 
-        case 'END_TUTORIAL':
+        case protocol.ClientMessages.END_TUTORIAL:
           handleEndTutorial();
           break;
 

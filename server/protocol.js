@@ -13,6 +13,9 @@ const ClientMessages = {
   REQUEST_REFUND: 'REQUEST_REFUND',
   PING: 'PING',
   INPUT: 'INPUT',
+  START_TUTORIAL: 'START_TUTORIAL',
+  TUTORIAL_INPUT: 'TUTORIAL_INPUT',
+  END_TUTORIAL: 'END_TUTORIAL',
 };
 
 const ServerMessages = {
@@ -218,6 +221,45 @@ function validateInput(message) {
   return { valid: true };
 }
 
+/**
+ * Validate START_TUTORIAL message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateStartTutorial(message) {
+  // No additional fields required
+  return { valid: true };
+}
+
+/**
+ * Validate TUTORIAL_INPUT message (same as regular INPUT)
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateTutorialInput(message) {
+  // dirX and dirY must be -1, 0, or 1
+  if (typeof message.dirX !== 'number' || ![-1, 0, 1].includes(message.dirX)) {
+    return { valid: false, error: 'Invalid dirX: must be -1, 0, or 1' };
+  }
+  if (typeof message.dirY !== 'number' || ![-1, 0, 1].includes(message.dirY)) {
+    return { valid: false, error: 'Invalid dirY: must be -1, 0, or 1' };
+  }
+  if (!isNonNegativeInteger(message.sequence)) {
+    return { valid: false, error: 'Invalid sequence: must be non-negative integer' };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate END_TUTORIAL message
+ * @param {Object} message - Message to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateEndTutorial(message) {
+  // No additional fields required
+  return { valid: true };
+}
+
 // Message type to validator mapping
 const MESSAGE_VALIDATORS = {
   [ClientMessages.HELLO]: validateHello,
@@ -225,6 +267,9 @@ const MESSAGE_VALIDATORS = {
   [ClientMessages.REQUEST_REFUND]: validateRequestRefund,
   [ClientMessages.PING]: validatePing,
   [ClientMessages.INPUT]: validateInput,
+  [ClientMessages.START_TUTORIAL]: validateStartTutorial,
+  [ClientMessages.TUTORIAL_INPUT]: validateTutorialInput,
+  [ClientMessages.END_TUTORIAL]: validateEndTutorial,
 };
 
 // ============================================

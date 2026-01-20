@@ -33,7 +33,8 @@
       "Bash(cmd //c \"del \\\\?\\\\c:\\\\Users\\\\evank\\\\OneDrive\\\\Documents\\\\RPS-ARENA\\\\nul\")",
       "Bash(pkill:*)",
       "Bash(nslookup:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(tasklist:*)"
     ]
   }
 }
