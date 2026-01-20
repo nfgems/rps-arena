@@ -200,73 +200,94 @@ body {
 .lobby-content {
   position: relative;
   z-index: 10;
-  padding-top: 100px;
-  padding-bottom: 80px;
+  padding-top: 80px;
   width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
-  max-height: 100vh;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .lobby-content h3 {
   text-align: center;
-  margin-bottom: 32px;
-  font-size: 28px;
+  margin: 16px 0;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-primary);
   text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
 }
 
 .lobby-list {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  padding: 0 32px;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 12px;
+  padding: 0 24px 24px 24px;
+  flex: 1;
+  align-content: center;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1400px) {
   .lobby-list {
-    grid-template-columns: 1fr;
-    padding: 0 16px;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: auto;
+  }
+}
+
+@media (max-width: 1100px) {
+  .lobby-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .lobby-list {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 0 16px 16px 16px;
   }
 }
 
 .lobby-item {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  padding: 20px 24px;
+  padding: 16px;
   background: rgba(22, 33, 62, 0.9);
   backdrop-filter: blur(8px);
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  min-height: 0;
 }
 
 .lobby-item:hover {
   border-color: var(--accent);
   background: rgba(22, 33, 62, 0.95);
-  transform: translateY(-4px) scale(1.02);
+  transform: translateY(-3px);
   box-shadow: 0 8px 30px rgba(233, 69, 96, 0.2);
 }
 
 .lobby-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 10px;
 }
 
 .lobby-name {
   font-weight: 700;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--text-primary);
 }
 
 .lobby-status {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -282,15 +303,18 @@ body {
 
 .lobby-actions {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
 }
 
 .lobby-actions .btn-primary {
-  padding: 12px 20px;
-  font-size: 14px;
+  padding: 10px 16px;
+  font-size: 13px;
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 4px 15px rgba(233, 69, 96, 0.3);
+  width: 100%;
 }
 
 .lobby-actions .btn-primary:hover:not(:disabled) {
@@ -298,8 +322,9 @@ body {
 }
 
 .add-bots-btn {
-  padding: 10px 14px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: 12px;
+  width: 100%;
 }
 
 .ping-display {
@@ -803,8 +828,10 @@ body {
 #lobbies-tab {
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: stretch;
   max-width: none;
+  height: calc(100vh - 60px);
+  padding-top: 0;
 }
 
 /* Profile Styles */
