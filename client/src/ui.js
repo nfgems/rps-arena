@@ -299,6 +299,12 @@ Expiration Time: ${expirationTime}`;
   // ============================================
 
   function handleStartTutorial() {
+    // Check if connected to server
+    if (!Network.isConnected()) {
+      alert('Please connect your wallet first to access the tutorial.');
+      return;
+    }
+
     // Start the tutorial
     if (typeof Tutorial !== 'undefined') {
       Tutorial.start();

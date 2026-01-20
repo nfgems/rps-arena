@@ -61,10 +61,12 @@ const Tutorial = (function () {
    * Start the tutorial
    */
   function start() {
+    console.log('Tutorial.start() called');
     // Send start tutorial message
     Network.send({
       type: 'START_TUTORIAL',
     });
+    console.log('START_TUTORIAL message sent');
   }
 
   /**
