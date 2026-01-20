@@ -121,24 +121,7 @@ body {
   font-weight: 900;
   letter-spacing: 8px;
   margin-bottom: 16px;
-  background: linear-gradient(135deg, var(--rock-color), var(--paper-color), var(--scissors-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  padding: 10px 20px;
-  position: relative;
-}
-
-.logo::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  z-index: -1;
+  color: #ffffff;
 }
 
 .tagline {
