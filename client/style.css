@@ -319,24 +319,77 @@ body {
   text-shadow: 0 0 40px rgba(233, 69, 96, 0.5);
 }
 
-.role-display {
-  font-size: 32px;
-  margin-top: 20px;
-  padding: 12px 24px;
-  border-radius: 8px;
+/* Role Tutorial */
+.role-tutorial {
+  display: flex;
+  gap: 40px;
+  margin-top: 30px;
+  justify-content: center;
+}
+
+.tutorial-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 30px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.tutorial-section.you-are {
+  border: 3px solid var(--accent);
+  background: rgba(233, 69, 96, 0.2);
+}
+
+.tutorial-section.attack {
+  border: 3px solid var(--success);
+}
+
+.tutorial-section.avoid {
+  border: 3px solid var(--warning);
+}
+
+.tutorial-label {
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+  color: var(--text-secondary);
 }
 
-.role-display.rock {
-  background: var(--rock-color);
+.tutorial-section.you-are .tutorial-label {
+  color: var(--accent);
 }
 
-.role-display.paper {
-  background: var(--paper-color);
+.tutorial-section.attack .tutorial-label {
+  color: var(--success);
 }
 
-.role-display.scissors {
-  background: var(--scissors-color);
+.tutorial-section.avoid .tutorial-label {
+  color: var(--warning);
+}
+
+.tutorial-section canvas {
+  border-radius: 50%;
+  margin-bottom: 10px;
+}
+
+.role-name {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.role-name.rock {
+  color: var(--rock-color);
+}
+
+.role-name.paper {
+  color: var(--paper-color);
+}
+
+.role-name.scissors {
+  color: var(--scissors-color);
 }
 
 /* Game Screen */
@@ -355,6 +408,40 @@ body {
   background: rgba(255, 255, 255, 0.8);
   padding: 4px 8px;
   border-radius: 4px;
+}
+
+/* Get Ready Overlay (3-second preview phase) */
+.get-ready-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.get-ready-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.preview-countdown {
+  font-size: 100px;
+  font-weight: 900;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(233, 69, 96, 0.6), 0 4px 8px rgba(0, 0, 0, 0.3);
+  line-height: 1;
+}
+
+.get-ready-text {
+  font-size: 36px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 0 20px rgba(0, 0, 0, 0.8), 0 2px 4px rgba(0, 0, 0, 0.5);
+  letter-spacing: 4px;
+  margin-top: 10px;
 }
 
 /* Result Screen */

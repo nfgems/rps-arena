@@ -323,7 +323,7 @@ async function startMatch(lobbyId, skipBalanceCheck = false) {
  */
 function startCountdown(match) {
   // Send match starting notification
-  const startMsg = protocol.createMatchStarting(match.id, 3);
+  const startMsg = protocol.createMatchStarting(match.id, config.COUNTDOWN_DURATION);
   broadcastToMatch(match, startMsg);
 
   // Send role assignments to each player AND set their matchId

@@ -29,6 +29,10 @@ const Renderer = (function () {
   // Animation state
   let animationFrame = 0;
 
+  // Preview mode state (for 3-second map preview before game starts)
+  let previewMode = false;
+  let previewPlayerId = null;
+
   /**
    * Initialize renderer with a canvas element
    * @param {HTMLCanvasElement} canvasElement - Canvas element to render to
@@ -87,10 +91,10 @@ const Renderer = (function () {
 
   /**
    * Draw a player token on the canvas
-   * @param {{x: number, y: number, role: string, alive: boolean, isLocal: boolean, disconnected: boolean}} player - Player data
+   * @param {{x: number, y: number, role: string, alive: boolean, isLocal: boolean, disconnected: boolean, id: string}} player - Player data
    */
   function drawPlayer(player) {
-    const { x, y, role, alive, isLocal, disconnected } = player;
+    const { x, y, role, alive, isLocal, disconnected, id } = player;
 
     if (!alive) return;
 
@@ -100,6 +104,21 @@ const Renderer = (function () {
     // Animate based on frame
     animationFrame++;
     const time = animationFrame / 60;
+
+    // Draw preview mode highlight for local player (pulsing ring)
+    const isPreviewHighlight = previewMode && id === previewPlayerId;
+    if (isPreviewHighlight) {
+      const pulseScale = 1 + Math.sin(time * 5) * 0.15;
+      const pulseAlpha = 0.6 + Math.sin(time * 5) * 0.3;
+      ctx.save();
+      ctx.globalAlpha = pulseAlpha;
+      ctx.strokeStyle = '#e94560';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, PLAYER_RADIUS * pulseScale + 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Draw shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
@@ -135,6 +154,14 @@ const Renderer = (function () {
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('DC', 0, -PLAYER_RADIUS - 8);
+    }
+
+    // Draw "YOU" label above local player during preview
+    if (isPreviewHighlight) {
+      ctx.fillStyle = '#e94560';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('YOU', 0, -PLAYER_RADIUS - 15);
     }
 
     ctx.restore();
@@ -343,6 +370,87 @@ const Renderer = (function () {
   }
 
   /**
+   * Draw a mini heart for the showdown subtitle
+   * @param {number} x - Center X position
+   * @param {number} y - Center Y position
+   * @param {number} size - Size of the heart
+   * @param {number} hue - Color hue (pink range)
+   * @param {number} sparkle - Sparkle intensity (0-1)
+   */
+  function drawMiniHeart(x, y, size, hue, sparkle) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Glowing effect
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.shadowBlur = 10 + 5 * sparkle;
+
+    ctx.fillStyle = `hsl(${hue}, 100%, ${65 + 15 * sparkle}%)`;
+    ctx.beginPath();
+
+    // Heart shape using bezier curves
+    const s = size * 0.6;
+    ctx.moveTo(0, s * 0.3);
+    ctx.bezierCurveTo(-s, -s * 0.5, -s, s * 0.3, 0, s);
+    ctx.bezierCurveTo(s, s * 0.3, s, -s * 0.5, 0, s * 0.3);
+    ctx.closePath();
+    ctx.fill();
+
+    // White highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.beginPath();
+    ctx.ellipse(-s * 0.3, -s * 0.1, s * 0.12, s * 0.15, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw sparkles around the showdown subtitle
+   * @param {number} xMin - Left boundary
+   * @param {number} xMax - Right boundary
+   * @param {number} yMin - Top boundary
+   * @param {number} yMax - Bottom boundary
+   * @param {number} time - Animation time
+   */
+  function drawSparkles(xMin, xMax, yMin, yMax, time) {
+    const sparkleCount = 8;
+    ctx.save();
+
+    for (let i = 0; i < sparkleCount; i++) {
+      // Pseudo-random positions based on index and time
+      const seed = i * 137.5;
+      const xPos = xMin + ((seed + time * 50) % (xMax - xMin));
+      const yPos = yMin + ((seed * 2.3 + time * 30) % (yMax - yMin));
+      const alpha = 0.3 + 0.7 * Math.abs(Math.sin(time * 5 + i * 0.8));
+      const size = 2 + Math.sin(time * 6 + i) * 1;
+
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.shadowColor = '#FF69B4';
+      ctx.shadowBlur = 5;
+
+      // Draw a 4-point star sparkle
+      ctx.beginPath();
+      ctx.moveTo(xPos, yPos - size);
+      ctx.lineTo(xPos + size * 0.3, yPos);
+      ctx.lineTo(xPos, yPos + size);
+      ctx.lineTo(xPos - size * 0.3, yPos);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(xPos - size, yPos);
+      ctx.lineTo(xPos, yPos + size * 0.3);
+      ctx.lineTo(xPos + size, yPos);
+      ctx.lineTo(xPos, yPos - size * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
    * Draw all showdown hearts
    * @param {Array} hearts - Array of heart objects [{id, x, y, captured}, ...]
    */
@@ -392,12 +500,58 @@ const Renderer = (function () {
     ctx.font = 'bold 120px Impact, Arial Black, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('SHOWDOWN', 0, 0);
+    ctx.fillText('SHOWDOWN', 0, -40);
 
     // Outline for that gritty effect
     ctx.strokeStyle = '#880000';
     ctx.lineWidth = 3;
-    ctx.strokeText('SHOWDOWN', 0, 0);
+    ctx.strokeText('SHOWDOWN', 0, -40);
+
+    // Subtitle text - sparkling animated pink with hearts
+    const time = animationFrame / 60;
+    const sparkle = 0.7 + 0.3 * Math.sin(time * 8); // Pulsing intensity
+    const hue = 330 + 20 * Math.sin(time * 3); // Shifting pink hue
+
+    // Glowing neon effect - multiple shadow layers
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.shadowBlur = 20 + 10 * Math.sin(time * 6);
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.font = 'bold 30px "Comic Sans MS", "Marker Felt", cursive';
+    ctx.textAlign = 'center';
+    const subtitleY = 55;
+    const text = 'Collect 2 hearts to win!';
+
+    // Draw glowing text with animated color
+    ctx.fillStyle = `hsl(${hue}, 100%, ${65 + 15 * sparkle}%)`;
+    ctx.fillText(text, 0, subtitleY);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.strokeText(text, 0, subtitleY);
+
+    // Draw mini hearts on each side
+    const textWidth = ctx.measureText(text).width;
+    const heartSize = 12;
+    const heartY = subtitleY - 4;
+    const heartPulse = 1 + 0.15 * Math.sin(time * 6);
+
+    // Left heart
+    ctx.save();
+    ctx.translate(-textWidth / 2 - 25, heartY);
+    ctx.scale(heartPulse, heartPulse);
+    drawMiniHeart(0, 0, heartSize, hue, sparkle);
+    ctx.restore();
+
+    // Right heart
+    ctx.save();
+    ctx.translate(textWidth / 2 + 25, heartY);
+    ctx.scale(heartPulse, heartPulse);
+    drawMiniHeart(0, 0, heartSize, hue, sparkle);
+    ctx.restore();
+
+    // Sparkles around the text
+    drawSparkles(-textWidth / 2 - 40, textWidth / 2 + 40, subtitleY - 15, subtitleY + 15, time);
 
     ctx.restore();
   }
@@ -562,6 +716,73 @@ const Renderer = (function () {
   }
 
   /**
+   * Draw a role icon on a standalone canvas (for tutorial display)
+   * @param {HTMLCanvasElement} targetCanvas - Canvas to draw on
+   * @param {string} role - Player role (rock, paper, scissors)
+   */
+  function drawRoleIconOnCanvas(targetCanvas, role) {
+    const targetCtx = targetCanvas.getContext('2d');
+    const size = targetCanvas.width;
+    const radius = size * 0.4;
+
+    // Clear canvas
+    targetCtx.clearRect(0, 0, size, size);
+
+    // Center the drawing
+    targetCtx.save();
+    targetCtx.translate(size / 2, size / 2);
+
+    // Draw shadow
+    targetCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    targetCtx.beginPath();
+    targetCtx.ellipse(2, 4, radius, radius * 0.4, 0, 0, Math.PI * 2);
+    targetCtx.fill();
+
+    // Draw main circle
+    targetCtx.fillStyle = COLORS[role];
+    targetCtx.beginPath();
+    targetCtx.arc(0, 0, radius, 0, Math.PI * 2);
+    targetCtx.fill();
+
+    // Draw border
+    targetCtx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    targetCtx.lineWidth = 2;
+    targetCtx.stroke();
+
+    // Draw role icon (scaled for the smaller canvas)
+    const scale = radius / PLAYER_RADIUS;
+    targetCtx.scale(scale, scale);
+    targetCtx.fillStyle = '#FFFFFF';
+    targetCtx.strokeStyle = '#FFFFFF';
+    targetCtx.lineWidth = 2;
+
+    const time = Date.now() / 1000; // Use real time for animation
+    switch (role) {
+      case 'rock':
+        drawRock(time);
+        break;
+      case 'paper':
+        drawPaper(time);
+        break;
+      case 'scissors':
+        drawScissors(time);
+        break;
+    }
+
+    targetCtx.restore();
+  }
+
+  /**
+   * Set preview mode (for 3-second map preview before game starts)
+   * @param {boolean} enabled - Whether preview mode is enabled
+   * @param {string|null} playerId - The local player's ID to highlight
+   */
+  function setPreviewMode(enabled, playerId) {
+    previewMode = enabled;
+    previewPlayerId = playerId;
+  }
+
+  /**
    * Cleanup
    */
   function destroy() {
@@ -580,6 +801,8 @@ const Renderer = (function () {
     drawHearts,
     drawShowdownText,
     drawShowdownScores,
+    drawRoleIconOnCanvas,
+    setPreviewMode,
     destroy,
     ARENA_WIDTH,
     ARENA_HEIGHT,

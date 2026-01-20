@@ -28,6 +28,9 @@ const UI = (function () {
   // Showdown mode state
   let showdownState = null; // { hearts: [], scores: {}, showText: bool, textProgress: number, freezeEndTime: number }
 
+  // Preview phase state (3-second map preview before game starts)
+  let inPreviewPhase = false;
+
   /**
    * Initialize UI
    */
@@ -357,6 +360,13 @@ Expiration Time: ${expirationTime}`;
   function handleMatchStarting(data) {
     showScreen('countdown');
 
+    // Reset preview phase state
+    inPreviewPhase = false;
+
+    // Set initial countdown from server data
+    const countdownNumber = document.getElementById('countdown-number');
+    countdownNumber.textContent = data.countdown || 10;
+
     // Initialize countdown canvas
     const canvas = document.getElementById('countdown-canvas');
     Renderer.init(canvas);
@@ -368,39 +378,129 @@ Expiration Time: ${expirationTime}`;
     // Store spawn position for when game actually starts
     spawnPosition = { x: data.spawnX, y: data.spawnY };
 
-    // Show role
-    const roleDisplay = document.getElementById('role-display');
-    roleDisplay.textContent = `You are ${data.role.toUpperCase()}`;
-    roleDisplay.className = `role-display ${data.role}`;
+    // Role relationships: who each role attacks and should avoid
+    const roleRelations = {
+      rock: { attacks: 'scissors', avoids: 'paper' },
+      paper: { attacks: 'rock', avoids: 'scissors' },
+      scissors: { attacks: 'paper', avoids: 'rock' },
+    };
+
+    const relations = roleRelations[data.role];
+
+    // Draw role icons on tutorial canvases
+    const yourIcon = document.getElementById('your-role-icon');
+    const attackIcon = document.getElementById('attack-role-icon');
+    const avoidIcon = document.getElementById('avoid-role-icon');
+
+    Renderer.drawRoleIconOnCanvas(yourIcon, data.role);
+    Renderer.drawRoleIconOnCanvas(attackIcon, relations.attacks);
+    Renderer.drawRoleIconOnCanvas(avoidIcon, relations.avoids);
+
+    // Set role names with color classes
+    const yourName = document.getElementById('your-role-name');
+    const attackName = document.getElementById('attack-role-name');
+    const avoidName = document.getElementById('avoid-role-name');
+
+    yourName.textContent = data.role.toUpperCase();
+    yourName.className = `role-name ${data.role}`;
+
+    attackName.textContent = relations.attacks.toUpperCase();
+    attackName.className = `role-name ${relations.attacks}`;
+
+    avoidName.textContent = relations.avoids.toUpperCase();
+    avoidName.className = `role-name ${relations.avoids}`;
+
+    // Animate the icons during countdown
+    startTutorialAnimation(yourIcon, attackIcon, avoidIcon, data.role, relations);
+  }
+
+  // Animation for tutorial icons during countdown
+  let tutorialAnimationId = null;
+
+  function startTutorialAnimation(yourIcon, attackIcon, avoidIcon, role, relations) {
+    // Cancel any existing animation
+    if (tutorialAnimationId) {
+      cancelAnimationFrame(tutorialAnimationId);
+    }
+
+    function animate() {
+      Renderer.drawRoleIconOnCanvas(yourIcon, role);
+      Renderer.drawRoleIconOnCanvas(attackIcon, relations.attacks);
+      Renderer.drawRoleIconOnCanvas(avoidIcon, relations.avoids);
+      tutorialAnimationId = requestAnimationFrame(animate);
+    }
+
+    animate();
+  }
+
+  function stopTutorialAnimation() {
+    if (tutorialAnimationId) {
+      cancelAnimationFrame(tutorialAnimationId);
+      tutorialAnimationId = null;
+    }
   }
 
   function handleCountdown(data) {
-    const countdownNumber = document.getElementById('countdown-number');
-    countdownNumber.textContent = data.secondsRemaining === 0 ? 'GO!' : data.secondsRemaining;
+    const secondsRemaining = data.secondsRemaining;
 
-    if (data.secondsRemaining === 0) {
-      // Transition to game
+    // Phase 1: Tutorial screen (10-4 seconds)
+    // Phase 2: Map preview (3-1 seconds)
+    // Phase 3: GO! (0 seconds)
+
+    if (secondsRemaining > 3) {
+      // Phase 1: Update tutorial countdown
+      const countdownNumber = document.getElementById('countdown-number');
+      countdownNumber.textContent = secondsRemaining;
+    } else if (secondsRemaining > 0 && !inPreviewPhase) {
+      // Transition to Phase 2: Map preview
+      inPreviewPhase = true;
+      stopTutorialAnimation();
+
+      showScreen('game');
+
+      // Initialize game canvas
+      const gameCanvas = document.getElementById('game-canvas');
+      Renderer.init(gameCanvas);
+      Input.init(gameCanvas);
+
+      // Set up interpolation but DON'T start sending input yet
+      Input.setPosition(spawnPosition.x, spawnPosition.y);
+      Interpolation.setLocalPlayer(Network.getUserId(), spawnPosition.x, spawnPosition.y);
+
+      // Show the GET READY overlay
+      const overlay = document.getElementById('get-ready-overlay');
+      overlay.classList.remove('hidden');
+
+      // Update preview countdown
+      const previewCountdown = document.getElementById('preview-countdown');
+      previewCountdown.textContent = secondsRemaining;
+
+      // Enable player highlight during preview
+      Renderer.setPreviewMode(true, Network.getUserId());
+
+      // Start render loop (for preview - no input yet)
+      startGameLoop();
+    } else if (secondsRemaining > 0 && inPreviewPhase) {
+      // Still in Phase 2: Update preview countdown
+      const previewCountdown = document.getElementById('preview-countdown');
+      previewCountdown.textContent = secondsRemaining;
+    } else if (secondsRemaining === 0) {
+      // Phase 3: GO! - Start the game
+      const previewCountdown = document.getElementById('preview-countdown');
+      previewCountdown.textContent = 'GO!';
+
+      // Disable preview mode highlight
+      Renderer.setPreviewMode(false, null);
+
+      // Hide overlay after a brief moment
       setTimeout(() => {
-        showScreen('game');
-
-        // Initialize game canvas
-        const gameCanvas = document.getElementById('game-canvas');
-        Renderer.init(gameCanvas);
-        Input.init(gameCanvas);
-
-        // Set input target to spawn position IMMEDIATELY
-        // This uses the position received from ROLE_ASSIGNMENT before snapshots arrive
-        Input.setPosition(spawnPosition.x, spawnPosition.y);
-
-        // Set local player for interpolation WITH spawn position
-        // This fixes the "invisible barrier" issue where player was stuck at (0,0) until first snapshot
-        Interpolation.setLocalPlayer(Network.getUserId(), spawnPosition.x, spawnPosition.y);
-
-        Input.startSending();
-
-        // Start render loop
-        startGameLoop();
+        const overlay = document.getElementById('get-ready-overlay');
+        overlay.classList.add('hidden');
+        inPreviewPhase = false;
       }, 500);
+
+      // NOW start sending input - game begins!
+      Input.startSending();
     }
   }
 

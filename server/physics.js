@@ -389,57 +389,26 @@ function bounceApart(players) {
 // ============================================
 
 /**
- * Calculate random spawn positions for 3 players with minimum distance
+ * Calculate spawn positions for 3 players in a triangle formation
  * @returns {Array} Array of {x, y} positions
  */
 function calculateSpawnPositions() {
-  const minDistance = 150; // Minimum distance between any two players
-  const padding = PLAYER_RADIUS + 10; // Keep away from arena edges
+  const spawnDistance = 200; // Distance from center to each player
+  const centerX = ARENA_WIDTH / 2;
+  const centerY = ARENA_HEIGHT / 2;
 
   const positions = [];
-  const maxAttempts = 100;
+
+  // Place 3 players in equilateral triangle formation (120 degrees apart)
+  // Starting angle at -90 degrees (top) so one player starts at the top
+  const startAngle = -Math.PI / 2;
 
   for (let i = 0; i < 3; i++) {
-    let attempts = 0;
-    let validPosition = null;
-
-    while (attempts < maxAttempts) {
-      // Generate random position within padded arena bounds
-      const x = padding + Math.random() * (ARENA_WIDTH - 2 * padding);
-      const y = padding + Math.random() * (ARENA_HEIGHT - 2 * padding);
-
-      // Check distance from all existing positions
-      let isValid = true;
-      for (const pos of positions) {
-        const dx = x - pos.x;
-        const dy = y - pos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance < minDistance) {
-          isValid = false;
-          break;
-        }
-      }
-
-      if (isValid) {
-        validPosition = { x, y };
-        break;
-      }
-
-      attempts++;
-    }
-
-    // Fallback: if no valid position found, use triangle formation
-    if (!validPosition) {
-      const centerX = ARENA_WIDTH / 2;
-      const centerY = ARENA_HEIGHT / 2;
-      const angle = (i * 2 * Math.PI) / 3 + Math.random() * Math.PI * 2;
-      validPosition = {
-        x: centerX + Math.cos(angle) * minDistance,
-        y: centerY + Math.sin(angle) * minDistance,
-      };
-    }
-
-    positions.push(validPosition);
+    const angle = startAngle + (i * 2 * Math.PI) / 3;
+    positions.push({
+      x: centerX + Math.cos(angle) * spawnDistance,
+      y: centerY + Math.sin(angle) * spawnDistance,
+    });
   }
 
   return positions;

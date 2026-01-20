@@ -144,8 +144,24 @@
   <div id="countdown-screen" class="screen hidden">
     <canvas id="countdown-canvas"></canvas>
     <div class="countdown-overlay">
-      <div id="countdown-number" class="countdown-number">3</div>
-      <div id="role-display" class="role-display"></div>
+      <div id="countdown-number" class="countdown-number">10</div>
+      <div id="role-tutorial" class="role-tutorial">
+        <div class="tutorial-section you-are">
+          <span class="tutorial-label">YOU ARE</span>
+          <canvas id="your-role-icon" width="80" height="80"></canvas>
+          <span id="your-role-name" class="role-name"></span>
+        </div>
+        <div class="tutorial-section attack">
+          <span class="tutorial-label">ATTACK</span>
+          <canvas id="attack-role-icon" width="80" height="80"></canvas>
+          <span id="attack-role-name" class="role-name"></span>
+        </div>
+        <div class="tutorial-section avoid">
+          <span class="tutorial-label">AVOID</span>
+          <canvas id="avoid-role-icon" width="80" height="80"></canvas>
+          <span id="avoid-role-name" class="role-name"></span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -153,6 +169,13 @@
   <div id="game-screen" class="screen hidden">
     <canvas id="game-canvas"></canvas>
     <div class="game-ping">Ping: <span id="game-ping-value">--</span>ms</div>
+    <!-- Get Ready Overlay (shown during 3-second preview) -->
+    <div id="get-ready-overlay" class="get-ready-overlay hidden">
+      <div class="get-ready-content">
+        <div id="preview-countdown" class="preview-countdown">3</div>
+        <div class="get-ready-text">GET READY</div>
+      </div>
+    </div>
   </div>
 
   <!-- Match Result Screen -->

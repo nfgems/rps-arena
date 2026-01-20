@@ -30,7 +30,7 @@ const RATE_LIMIT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 // Game Configuration
 // ============================================
 
-const COUNTDOWN_DURATION = parseInt(process.env.COUNTDOWN_DURATION, 10) || 3; // seconds
+const COUNTDOWN_DURATION = parseInt(process.env.COUNTDOWN_DURATION, 10) || 10; // seconds
 const TICK_RATE = parseInt(process.env.TICK_RATE, 10) || 30; // Hz
 const SNAPSHOT_RATE = 20; // Hz (fixed - clients expect this)
 
