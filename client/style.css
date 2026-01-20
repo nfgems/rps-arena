@@ -125,6 +125,7 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.4));
 }
 
 .tagline {
