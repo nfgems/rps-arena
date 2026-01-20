@@ -1430,6 +1430,19 @@ body {
 .showdown-section {
   border: 2px solid var(--accent);
   background: linear-gradient(135deg, rgba(233, 69, 96, 0.1) 0%, var(--bg-card) 100%);
+  text-align: center;
+}
+
+.showdown-section h4 {
+  justify-content: center;
+}
+
+.showdown-section .guide-intro {
+  text-align: center;
+}
+
+.showdown-details {
+  text-align: left;
 }
 
 .showdown-badge {
