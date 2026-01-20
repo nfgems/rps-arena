@@ -364,14 +364,24 @@
 
     resize() {
       if (!this.canvas) return;
-      this.canvas.width = window.innerWidth;
-      this.canvas.height = window.innerHeight;
+
+      // Get the actual viewport dimensions
+      const width = window.innerWidth || document.documentElement.clientWidth;
+      const height = window.innerHeight || document.documentElement.clientHeight;
+
+      // Only resize if dimensions are valid
+      if (width > 0 && height > 0) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+
+        // Reinitialize characters with new canvas dimensions
+        if (this.isRunning && this.characters.length > 0) {
+          this.initCharacters();
+        }
+      }
     }
 
-    init() {
-      if (!this.canvas) return;
-      this.resize();
-
+    initCharacters() {
       const count = Math.max(12, Math.floor((this.canvas.width * this.canvas.height) / 60000));
       this.characters = [];
       for (let i = 0; i < count; i++) {
@@ -382,6 +392,12 @@
       for (let i = 0; i < 3; i++) {
         this.chasePairs.push(new ChasePair(this.canvas));
       }
+    }
+
+    init() {
+      if (!this.canvas) return;
+      this.resize();
+      this.initCharacters();
     }
 
     animate() {
@@ -422,61 +438,82 @@
   }
 
   // Create managers for both screens
-  const landingBg = new BackgroundManager('landing-bg-canvas');
-  const lobbyBg = new BackgroundManager('lobby-bg-canvas');
+  let landingBg = null;
+  let lobbyBg = null;
 
-  window.addEventListener('resize', () => {
-    if (landingBg.isRunning) landingBg.resize();
-    if (lobbyBg.isRunning) lobbyBg.resize();
-  });
+  function initBackgrounds() {
+    landingBg = new BackgroundManager('landing-bg-canvas');
+    lobbyBg = new BackgroundManager('lobby-bg-canvas');
 
-  // Watch for landing screen visibility
-  const landingScreen = document.getElementById('landing-screen');
-  if (landingScreen) {
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === 'class') {
-          if (landingScreen.classList.contains('hidden')) {
-            landingBg.stop();
-          } else {
-            landingBg.start();
+    window.addEventListener('resize', () => {
+      if (landingBg && landingBg.isRunning) landingBg.resize();
+      if (lobbyBg && lobbyBg.isRunning) lobbyBg.resize();
+    });
+
+    // Watch for landing screen visibility
+    const landingScreen = document.getElementById('landing-screen');
+    if (landingScreen) {
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.attributeName === 'class') {
+            if (landingScreen.classList.contains('hidden')) {
+              landingBg.stop();
+            } else {
+              landingBg.start();
+            }
           }
         }
+      });
+      observer.observe(landingScreen, { attributes: true });
+
+      // Start immediately if visible
+      if (!landingScreen.classList.contains('hidden')) {
+        landingBg.start();
       }
-    });
-    observer.observe(landingScreen, { attributes: true });
-
-    // Start immediately if visible
-    if (!landingScreen.classList.contains('hidden')) {
-      landingBg.start();
     }
-  }
 
-  // Watch for lobby screen visibility
-  const lobbyScreen = document.getElementById('lobby-screen');
-  if (lobbyScreen) {
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === 'class') {
-          if (lobbyScreen.classList.contains('hidden')) {
-            lobbyBg.stop();
-          } else {
-            lobbyBg.start();
+    // Watch for lobby screen visibility
+    const lobbyScreen = document.getElementById('lobby-screen');
+    if (lobbyScreen) {
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.attributeName === 'class') {
+            if (lobbyScreen.classList.contains('hidden')) {
+              lobbyBg.stop();
+            } else {
+              lobbyBg.start();
+            }
           }
         }
-      }
-    });
-    observer.observe(lobbyScreen, { attributes: true });
+      });
+      observer.observe(lobbyScreen, { attributes: true });
 
-    if (!lobbyScreen.classList.contains('hidden')) {
-      lobbyBg.start();
+      if (!lobbyScreen.classList.contains('hidden')) {
+        lobbyBg.start();
+      }
     }
+
+    window.lobbyBackground = {
+      landing: landingBg,
+      lobby: lobbyBg,
+      start: () => lobbyBg && lobbyBg.start(),
+      stop: () => lobbyBg && lobbyBg.stop()
+    };
   }
 
-  window.lobbyBackground = {
-    landing: landingBg,
-    lobby: lobbyBg,
-    start: () => lobbyBg.start(),
-    stop: () => lobbyBg.stop()
-  };
+  // Initialize after DOM is fully loaded and rendered
+  function safeInit() {
+    // Use requestAnimationFrame to ensure layout is complete
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        initBackgrounds();
+      });
+    });
+  }
+
+  if (document.readyState === 'complete') {
+    safeInit();
+  } else {
+    window.addEventListener('load', safeInit);
+  }
 })();
