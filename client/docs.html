@@ -15,7 +15,8 @@
     .docs-hero { text-align: center; padding: 60px 0; margin-bottom: 40px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
     .docs-hero h1 { font-size: 48px; font-weight: 900; margin-bottom: 16px; background: linear-gradient(135deg, var(--rock-color), var(--paper-color), var(--scissors-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .docs-hero p { font-size: 18px; color: var(--text-secondary); max-width: 600px; margin: 0 auto; }
-    .docs-nav { position: sticky; top: 70px; background: var(--bg-card); border-radius: 12px; padding: 20px; margin-bottom: 40px; z-index: 100; }
+    .docs-nav { position: sticky; top: 70px; background: var(--bg-card); border-radius: 12px; padding: 20px; margin-bottom: 40px; z-index: 100; transition: opacity 0.3s ease, transform 0.3s ease; }
+    .docs-nav.hidden { opacity: 0; pointer-events: none; transform: translateY(-10px); }
     .docs-nav-title { font-size: 12px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; letter-spacing: 1px; }
     .docs-nav-links { display: flex; flex-wrap: wrap; gap: 8px; }
     .docs-nav-links a { padding: 8px 16px; background: var(--bg-dark); border-radius: 20px; color: var(--text-secondary); text-decoration: none; font-size: 13px; transition: all 0.2s; }
@@ -1150,5 +1151,33 @@ npm run test:e2e       <span class="comment"># End-to-end testing</span></pre>
       </p>
     </footer>
   </div>
+  <script>
+    (function() {
+      const nav = document.querySelector('.docs-nav');
+      let lastScrollY = 0;
+      let ticking = false;
+
+      function updateNav() {
+        const currentScrollY = window.scrollY;
+
+        // Show nav when at top or scrolling up, hide when scrolling down
+        if (currentScrollY < 100 || currentScrollY < lastScrollY) {
+          nav.classList.remove('hidden');
+        } else {
+          nav.classList.add('hidden');
+        }
+
+        lastScrollY = currentScrollY;
+        ticking = false;
+      }
+
+      window.addEventListener('scroll', function() {
+        if (!ticking) {
+          window.requestAnimationFrame(updateNav);
+          ticking = true;
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
