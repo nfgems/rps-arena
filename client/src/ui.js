@@ -634,19 +634,52 @@ Expiration Time: ${expirationTime}`;
   }
 
   function handleShowdownStart(data) {
-    // Legacy handler - no longer used but kept for compatibility
-    console.log('SHOWDOWN_START received (legacy)', data);
+    console.log('SHOWDOWN_START received - freeze phase', data);
+
+    // Initialize showdown state with freeze (no hearts yet)
+    const freezeDuration = data.freezeDuration || 3000;
+
+    showdownState = {
+      hearts: [], // Hearts come later with SHOWDOWN_READY
+      scores: {},
+      showText: true, // Show "SHOWDOWN" text
+      textProgress: 0,
+      freezeEndTime: Date.now() + freezeDuration,
+    };
+
+    // Animate the "SHOWDOWN" text appearing
+    const startTime = Date.now();
+    const textAnimDuration = 500; // 500ms for text to fully appear
+
+    function animateShowdownText() {
+      if (!showdownState || !showdownState.showText) return;
+
+      const elapsed = Date.now() - startTime;
+      showdownState.textProgress = Math.min(1, elapsed / textAnimDuration);
+
+      if (elapsed < freezeDuration) {
+        requestAnimationFrame(animateShowdownText);
+      }
+    }
+
+    requestAnimationFrame(animateShowdownText);
   }
 
   function handleShowdownReady(data) {
     console.log('SHOWDOWN - hearts spawned, race begins!', data);
 
-    // Initialize showdown state with hearts immediately grabbable
-    showdownState = {
-      hearts: data.hearts.map(h => ({ ...h, captured: false })),
-      scores: {},
-      showText: false, // No text overlay - just show hearts
-    };
+    // Update showdown state: hide text, add hearts
+    if (showdownState) {
+      showdownState.hearts = data.hearts.map(h => ({ ...h, captured: false }));
+      showdownState.showText = false; // Hide "SHOWDOWN" text, show hearts
+    } else {
+      // If somehow we missed SHOWDOWN_START, initialize state now
+      showdownState = {
+        hearts: data.hearts.map(h => ({ ...h, captured: false })),
+        scores: {},
+        showText: false,
+      };
+    }
   }
 
   function handleHeartCaptured(data) {
@@ -900,9 +933,11 @@ Expiration Time: ${expirationTime}`;
       const direction = Input.getDirection();
 
       // Client-side prediction: move in the direction at server speed
+      // Skip movement if frozen during showdown text display
+      const isFrozen = showdownState && showdownState.showText;
       const currentPos = Interpolation.getPosition(Network.getUserId());
 
-      if (currentPos && (direction.dx !== 0 || direction.dy !== 0)) {
+      if (currentPos && !isFrozen && (direction.dx !== 0 || direction.dy !== 0)) {
         // Normalize diagonal movement
         let moveX = direction.dx;
         let moveY = direction.dy;

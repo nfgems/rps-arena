@@ -35,7 +35,7 @@ const MAX_TICK_STALENESS = 2000; // 2 seconds (60 ticks at 30Hz)
 const RECONNECT_GRACE_PERIOD = parseInt(process.env.RECONNECT_GRACE_PERIOD || '30', 10);
 
 // Showdown mode constants
-const SHOWDOWN_FREEZE_DURATION = 1500; // 1.5 seconds freeze when showdown starts
+const SHOWDOWN_FREEZE_DURATION = 3000; // 3 seconds freeze when showdown starts (shows "SHOWDOWN" text)
 const SHOWDOWN_HEARTS_TO_WIN = 2; // First player to capture this many hearts wins
 
 // ============================================
@@ -1277,21 +1277,49 @@ function stopHealthMonitor() {
 function triggerShowdown(match) {
   console.log(`[SHOWDOWN] Triggering showdown for match ${match.id}`);
 
-  // Spawn hearts immediately
+  // Spawn hearts (but don't reveal them yet)
   const hearts = physics.spawnHearts(3);
 
-  // Initialize showdown state - no freeze, hearts grabbable immediately
+  // Initialize showdown state - frozen during "SHOWDOWN" text display
   match.showdown = {
     hearts: hearts,
     scores: {}, // playerId -> hearts captured
-    frozen: false, // No freeze - players can grab hearts immediately
+    frozen: true, // Frozen during showdown text
+    freezeEndTime: Date.now() + SHOWDOWN_FREEZE_DURATION,
   };
 
-  // Broadcast showdown with hearts - race begins immediately!
-  const showdownMsg = protocol.createShowdownReady(hearts);
-  broadcastToMatch(match, showdownMsg);
+  // Freeze all alive players during showdown text
+  for (const player of match.players) {
+    if (player.alive) {
+      player.frozen = true;
+    }
+  }
 
-  console.log(`[SHOWDOWN] Hearts spawned, race begins immediately!`);
+  // Broadcast SHOWDOWN_START (freeze phase, "SHOWDOWN" text displays)
+  const startMsg = protocol.createShowdownStart(SHOWDOWN_FREEZE_DURATION);
+  broadcastToMatch(match, startMsg);
+
+  console.log(`[SHOWDOWN] Freeze phase started (${SHOWDOWN_FREEZE_DURATION}ms)`);
+
+  // After freeze duration, send SHOWDOWN_READY with hearts and unfreeze players
+  setTimeout(() => {
+    if (!match.showdown || match.status !== 'running') return;
+
+    match.showdown.frozen = false;
+
+    // Unfreeze players
+    for (const player of match.players) {
+      if (player.alive) {
+        player.frozen = false;
+      }
+    }
+
+    // Broadcast SHOWDOWN_READY - hearts appear and race begins!
+    const readyMsg = protocol.createShowdownReady(hearts);
+    broadcastToMatch(match, readyMsg);
+
+    console.log(`[SHOWDOWN] Hearts spawned, race begins!`);
+  }, SHOWDOWN_FREEZE_DURATION);
 }
 
 /**
