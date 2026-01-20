@@ -111,14 +111,16 @@ function isNonNegativeInteger(value) {
 
 /**
  * Validate Ethereum transaction hash format
- * Also accepts admin/dev mode fake tx hashes (0xdev_*, 0xbot_tx_*)
  * @param {*} txHash - Transaction hash to validate
+ * @param {boolean} isAdmin - Whether this is from the admin port (allows dev/bot tx hashes)
  * @returns {boolean}
  */
-function isValidTxHash(txHash) {
+function isValidTxHash(txHash, isAdmin = false) {
   if (typeof txHash !== 'string') return false;
-  // Accept real Ethereum tx hashes OR admin/dev mode fake hashes
-  return TX_HASH_REGEX.test(txHash) || ADMIN_TX_HASH_REGEX.test(txHash);
+  // Always accept real Ethereum tx hashes
+  if (TX_HASH_REGEX.test(txHash)) return true;
+  // Only accept admin/dev mode fake hashes on admin port
+  return isAdmin && ADMIN_TX_HASH_REGEX.test(txHash);
 }
 
 /**
@@ -159,13 +161,15 @@ function validateHello(message) {
 /**
  * Validate JOIN_LOBBY message
  * @param {Object} message - Message to validate
+ * @param {Object} context - Validation context
+ * @param {boolean} context.isAdmin - Whether this is from the admin port
  * @returns {{valid: boolean, error?: string}}
  */
-function validateJoinLobby(message) {
+function validateJoinLobby(message, context = {}) {
   if (!isValidLobbyId(message.lobbyId)) {
     return { valid: false, error: `Invalid lobbyId: must be integer 1-${LOBBY_COUNT}` };
   }
-  if (!isValidTxHash(message.paymentTxHash)) {
+  if (!isValidTxHash(message.paymentTxHash, context.isAdmin)) {
     return { valid: false, error: 'Invalid paymentTxHash: must be 0x + 64 hex characters' };
   }
   return { valid: true };
@@ -230,9 +234,10 @@ const MESSAGE_VALIDATORS = {
 /**
  * Parse and validate incoming WebSocket message
  * @param {string} data - Raw message string
+ * @param {Object} context - Validation context (e.g., { isAdmin: true })
  * @returns {{message: Object|null, error?: string}} Parsed message or null with error
  */
-function parseMessage(data) {
+function parseMessage(data, context = {}) {
   // Parse JSON
   let message;
   try {
@@ -259,7 +264,7 @@ function parseMessage(data) {
   // Run schema validation for this message type
   const validator = MESSAGE_VALIDATORS[message.type];
   if (validator) {
-    const validation = validator(message);
+    const validation = validator(message, context);
     if (!validation.valid) {
       return { message: null, error: validation.error };
     }

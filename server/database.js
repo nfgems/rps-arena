@@ -1146,7 +1146,7 @@ function getInterruptedMatches() {
   return withDbErrorHandling('getInterruptedMatches', () => {
     const database = getDb();
     const stmt = database.prepare(`
-      SELECT ms.*, m.lobby_id, m.rng_seed
+      SELECT ms.*, m.lobby_id, m.rng_seed, m.created_at as match_created_at, m.running_at as match_running_at
       FROM match_state ms
       JOIN matches m ON ms.match_id = m.id
       WHERE ms.status IN ('countdown', 'running')

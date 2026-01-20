@@ -675,6 +675,78 @@ async function getEthBalance(address) {
   }
 }
 
+// ============================================
+// Crash Recovery - On-Chain State Check
+// ============================================
+
+/**
+ * Check if a payout was already sent from a lobby wallet during crash recovery.
+ * Queries recent USDC Transfer events from the lobby wallet to detect if
+ * a winner payout (2.4 USDC) was sent but not recorded in DB due to crash.
+ *
+ * IMPORTANT: Uses matchStartTime to filter out payouts from previous matches.
+ * Only detects payouts that occurred AFTER the match started.
+ *
+ * @param {string} lobbyAddress - Lobby wallet address to check
+ * @param {Date|string} matchStartTime - When the match started (to filter old transfers)
+ * @param {number} lookbackBlocks - How many blocks to look back (default 1000 ~= 30 min on Base)
+ * @returns {Promise<{payoutDetected: boolean, transfers: Array}>}
+ */
+async function checkRecentPayoutFromLobby(lobbyAddress, matchStartTime = null, lookbackBlocks = 1000) {
+  try {
+    const provider = getProvider();
+    const usdc = getUsdcContract();
+
+    const currentBlock = await provider.getBlockNumber();
+    const fromBlock = Math.max(0, currentBlock - lookbackBlocks);
+
+    // Query Transfer events FROM the lobby wallet
+    const filter = usdc.filters.Transfer(lobbyAddress, null);
+    const events = await usdc.queryFilter(filter, fromBlock, currentBlock);
+
+    // Parse transfer amounts and get block timestamps
+    const transfers = [];
+    for (const event of events) {
+      const block = await provider.getBlock(event.blockNumber);
+      transfers.push({
+        to: event.args.to,
+        amount: Number(event.args.value) / 10 ** USDC_DECIMALS,
+        amountRaw: event.args.value.toString(),
+        txHash: event.transactionHash,
+        blockNumber: event.blockNumber,
+        timestamp: block ? new Date(block.timestamp * 1000) : null,
+      });
+    }
+
+    // Check if any transfer matches winner payout amount (2.4 USDC)
+    const winnerPayoutUsdc = WINNER_PAYOUT / 10 ** USDC_DECIMALS; // 2.4
+
+    // Filter to only payouts AFTER match started (if matchStartTime provided)
+    const matchStart = matchStartTime ? new Date(matchStartTime) : null;
+    const relevantPayouts = transfers.filter(t => {
+      if (t.amount !== winnerPayoutUsdc) return false;
+      // If we have matchStartTime, only count payouts after match started
+      if (matchStart && t.timestamp) {
+        return t.timestamp >= matchStart;
+      }
+      // If no matchStartTime or timestamp, include it (conservative)
+      return true;
+    });
+
+    const payoutDetected = relevantPayouts.length > 0;
+
+    if (payoutDetected) {
+      console.log(`[RECOVERY] Detected existing payout from lobby ${lobbyAddress} after match start:`, relevantPayouts);
+    }
+
+    return { payoutDetected, transfers: relevantPayouts };
+  } catch (error) {
+    console.error(`[RECOVERY] Failed to check on-chain state for ${lobbyAddress}:`, error.message);
+    // On error, return false to be conservative (will attempt refund, may fail if balance insufficient)
+    return { payoutDetected: false, transfers: [], error: error.message };
+  }
+}
+
 // Track which wallets we've already alerted about (to avoid spam)
 // Map of alertKey -> timestamp for periodic cleanup and re-alerting
 const lowEthAlerts = new Map();
@@ -777,6 +849,9 @@ module.exports = {
   // Balance
   getUsdcBalance,
   getTreasuryBalance,
+
+  // Crash Recovery
+  checkRecentPayoutFromLobby,
 
   // Error handling utilities
   classifyError,

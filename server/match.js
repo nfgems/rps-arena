@@ -115,12 +115,56 @@ function isStateTooOld(updatedAt) {
 
 /**
  * Void a match during crash recovery and refund all players
+ * IMPORTANT: Checks on-chain state to prevent double-spend if payout was sent but DB not updated
+ *
  * @param {string} matchId - Match UUID
  * @param {number} lobbyId - Lobby ID
  * @param {Object} state - Saved state with player info
  * @param {string} reason - Reason for voiding
+ * @param {string} matchStartTime - When the match started (ISO timestamp) for filtering old payouts
  */
-async function voidAndRefundFromRecovery(matchId, lobbyId, state, reason) {
+async function voidAndRefundFromRecovery(matchId, lobbyId, state, reason, matchStartTime = null) {
+  // CRITICAL: Check on-chain if a payout was already sent from this lobby wallet
+  // This prevents double-spend if server crashed after payout but before DB update
+  const lobbyData = lobby.getLobby(lobbyId);
+  if (lobbyData && lobbyData.deposit_address) {
+    // Pass matchStartTime to filter out payouts from previous matches in same lobby
+    const onChainCheck = await payments.checkRecentPayoutFromLobby(lobbyData.deposit_address, matchStartTime);
+
+    if (onChainCheck.payoutDetected) {
+      // Payout was already sent! Do NOT refund - just mark match as finished
+      console.log(`[RECOVERY] PAYOUT ALREADY DETECTED on-chain for match ${matchId}. Skipping refund to prevent double-spend.`);
+
+      // Try to find the winner from the payout transfer
+      const winnerPayoutUsdc = payments.WINNER_PAYOUT / 10 ** payments.USDC_DECIMALS;
+      const payoutTransfer = onChainCheck.transfers.find(t => t.amount === winnerPayoutUsdc);
+
+      // Update match as finished (not void) with the detected tx hash
+      db.setMatchWinner(matchId, null, winnerPayoutUsdc, payoutTransfer?.txHash || 'recovered_from_chain');
+
+      // Clean up persisted state
+      db.deleteMatchState(matchId);
+
+      // Reset lobby (no refunds needed)
+      lobby.resetLobby(lobbyId);
+
+      // Send alert about recovered payout
+      sendAlert(AlertType.MATCH_RECOVERED, {
+        matchId,
+        lobbyId,
+        result: 'finished_recovered',
+        reason: 'payout_detected_on_chain',
+        payoutTxHash: payoutTransfer?.txHash,
+        payoutRecipient: payoutTransfer?.to,
+        playerCount: state?.players?.length || 0,
+      }).catch(err => console.error('Alert send failed:', err.message));
+
+      console.log(`[RECOVERY] Match ${matchId} marked as finished (payout already on-chain: ${payoutTransfer?.txHash})`);
+      return;
+    }
+  }
+
+  // No payout detected - safe to void and refund
   // Update match status in database
   db.updateMatchStatus(matchId, 'void');
 
@@ -167,14 +211,25 @@ async function recoverInterruptedMatches() {
   console.log(`[RECOVERY] Found ${interruptedMatches.length} interrupted match(es)`);
 
   for (const savedState of interruptedMatches) {
-    const { match_id: matchId, version, updated_at: updatedAt, state, lobby_id: lobbyId } = savedState;
+    const {
+      match_id: matchId,
+      version,
+      updated_at: updatedAt,
+      state,
+      lobby_id: lobbyId,
+      match_created_at: matchCreatedAt,
+      match_running_at: matchRunningAt,
+    } = savedState;
 
-    console.log(`[RECOVERY] Processing match ${matchId} (lobby ${lobbyId}, tick ${savedState.tick})`);
+    // Use running_at if available, otherwise created_at (for payout time filtering)
+    const matchStartTime = matchRunningAt || matchCreatedAt;
+
+    console.log(`[RECOVERY] Processing match ${matchId} (lobby ${lobbyId}, tick ${savedState.tick}, started: ${matchStartTime})`);
 
     // Check version compatibility
     if (!isStateVersionCompatible(version)) {
       console.log(`[RECOVERY] Match ${matchId}: Incompatible state version ${version}`);
-      await voidAndRefundFromRecovery(matchId, lobbyId, state, 'incompatible_state_version');
+      await voidAndRefundFromRecovery(matchId, lobbyId, state, 'incompatible_state_version', matchStartTime);
       results.push({ matchId, result: 'voided', reason: 'incompatible_state_version' });
       continue;
     }
@@ -183,7 +238,7 @@ async function recoverInterruptedMatches() {
     if (isStateTooOld(updatedAt)) {
       const ageMinutes = Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000);
       console.log(`[RECOVERY] Match ${matchId}: State too old (${ageMinutes} minutes)`);
-      await voidAndRefundFromRecovery(matchId, lobbyId, state, 'state_too_old');
+      await voidAndRefundFromRecovery(matchId, lobbyId, state, 'state_too_old', matchStartTime);
       results.push({ matchId, result: 'voided', reason: 'state_too_old' });
       continue;
     }
@@ -191,7 +246,7 @@ async function recoverInterruptedMatches() {
     // State is valid but we cannot resume (players have disconnected, no WebSockets)
     // For now, always void and refund on crash - reconnection not implemented yet
     console.log(`[RECOVERY] Match ${matchId}: Voiding (no reconnection support yet)`);
-    await voidAndRefundFromRecovery(matchId, lobbyId, state, 'server_restart');
+    await voidAndRefundFromRecovery(matchId, lobbyId, state, 'server_restart', matchStartTime);
     results.push({ matchId, result: 'voided', reason: 'server_restart' });
   }
 
@@ -739,8 +794,6 @@ async function endMatch(match, winner, reason) {
 
   clearInterval(match.gameLoopInterval);
 
-  logger.logMatchEnd(match.id, match.tick, winner?.id || null, reason);
-
   if (winner) {
     // Process winner payout from lobby wallet
     const winnerPlayer = match.players.find(p => p.id === winner.id);
@@ -749,6 +802,7 @@ async function endMatch(match, winner, reason) {
     // DEV MODE: Skip actual payouts, just mark match as finished
     if (match.devMode) {
       console.log(`[DEV MODE] Skipping payout for match ${match.id}, winner: ${winnerPlayer.username}`);
+      logger.logMatchEnd(match.id, match.tick, winner.id, reason);
       match.status = 'finished';
       db.setMatchWinner(match.id, winner.id, 0, 'dev_mode_no_payout');
 
@@ -764,8 +818,60 @@ async function endMatch(match, winner, reason) {
       return;
     }
 
+    // HIGH-1 FIX: Secondary balance check immediately before payout
+    // This catches edge cases where funds could be swept between match start and end
+    if (!lobbyData || !lobbyData.deposit_address) {
+      console.error(`[PAYOUT] Lobby data not found for match ${match.id}, lobby ${match.lobbyId}`);
+      await voidMatch(match.id, 'lobby_not_found');
+      return;
+    }
+    const prePayoutBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
+    const requiredBalance = BigInt(payments.WINNER_PAYOUT); // 2.4 USDC for winner payout
+    if (BigInt(prePayoutBalance.balance) < requiredBalance) {
+      console.error(`[PAYOUT] Insufficient lobby balance at payout time: ${prePayoutBalance.formatted} USDC (need ${Number(requiredBalance) / 1_000_000} USDC)`);
+
+      // Alert and void match - something drained the lobby wallet
+      sendAlert(AlertType.INSUFFICIENT_BALANCE, {
+        matchId: match.id,
+        lobbyId: match.lobbyId,
+        balance: prePayoutBalance.formatted,
+        required: (Number(requiredBalance) / 1_000_000).toFixed(2),
+        stage: 'pre_payout',
+      }).catch(err => console.error('Alert send failed:', err.message));
+
+      // Void match - voidMatch handles logging, refunds, and cleanup
+      // Note: gameLoopInterval already cleared above, voidMatch will no-op on it
+      await voidMatch(match.id, 'insufficient_balance_at_payout');
+      return;
+    }
+
     // Note: Refunds come from lobby wallet (where deposits are), not treasury
     // Treasury only receives swept fees after successful matches
+
+    // HIGH-2 FIX: Check if payout was already made (prevents double-spend on crash recovery)
+    const existingMatch = db.getMatch(match.id);
+    if (existingMatch && existingMatch.payout_tx_hash) {
+      console.log(`[PAYOUT] Payout already completed for match ${match.id}, tx: ${existingMatch.payout_tx_hash}`);
+      match.status = 'finished';
+
+      // Send match end message with existing payout info
+      const endMsg = protocol.createMatchEnd(winner.id, {
+        winner: 2.4,
+        treasury: 0.6,
+      });
+      broadcastToMatch(match, endMsg);
+
+      // Clean up persisted state (should already be deleted, but ensure consistency)
+      db.deleteMatchState(match.id);
+
+      // Cleanup without attempting another payout
+      setTimeout(() => {
+        activeMatches.delete(match.id);
+        matchTickErrors.delete(match.id);
+        lobby.resetLobby(match.lobbyId);
+      }, 5000);
+      return;
+    }
 
     // Log the payout attempt before trying
     const attemptRecord = db.logPayoutAttempt({
@@ -803,6 +909,7 @@ async function endMatch(match, winner, reason) {
 
     if (payoutResult.success) {
       // Payout succeeded - mark match as finished with winner
+      logger.logMatchEnd(match.id, match.tick, winner.id, reason);
       match.status = 'finished';
       db.setMatchWinner(match.id, winner.id, 2.4, payoutResult.txHash);
 
@@ -835,6 +942,7 @@ async function endMatch(match, winner, reason) {
       // Payout failed - void match and refund all players
       console.error(`[PAYOUT] Failed: ${payoutResult.error}. Voiding match and refunding all players.`);
 
+      logger.logMatchEnd(match.id, match.tick, winner.id, 'payout_failed');
       match.status = 'void';
       db.updateMatchStatus(match.id, 'void');
 
@@ -866,6 +974,7 @@ async function endMatch(match, winner, reason) {
     }
   } else {
     // No winner (void match due to other reasons like disconnect)
+    logger.logMatchEnd(match.id, match.tick, null, reason);
     match.status = 'void';
     db.updateMatchStatus(match.id, 'void');
 

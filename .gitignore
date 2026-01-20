@@ -1,10 +1,16 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Environment (CRITICAL: contains mnemonics and encryption keys)
 .env
 .env.local
 .env.production
+.env.development
+*.pem
+*.key
+secrets/
+# Keep .env.example tracked (it's a template, not secrets)
+!.env.example
 
 # Database
 data/

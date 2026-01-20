@@ -15,6 +15,12 @@ const activeLobbies = new Map();
 // Mutex locks for lobby operations (prevents race conditions)
 const lobbyLocks = new Map();
 
+// MEDIUM-5 FIX: Track refund attempts per player to prevent infinite retries
+// Map of lobbyPlayerId -> { attempts: number, lastAttempt: timestamp }
+const refundAttempts = new Map();
+const MAX_REFUND_ATTEMPTS = 5;
+const REFUND_ATTEMPT_RESET_MS = 60 * 60 * 1000; // Reset attempts after 1 hour
+
 // ============================================
 // Initialization
 // ============================================
@@ -390,8 +396,10 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
       return { success: false, error: 'NOT_IN_LOBBY' };
     }
 
-    // Check if refund is available (timeout passed and match not started)
-    if (lobby.status === 'in_progress') {
+    // HIGH-3 FIX: Check if refund is available (timeout passed and match not started/starting)
+    // Block refunds when lobby is 'ready' (match about to start) OR 'in_progress' (match running)
+    // This closes the race window between lobby becoming ready and match actually starting
+    if (lobby.status === 'in_progress' || lobby.status === 'ready') {
       return { success: false, error: 'REFUND_NOT_AVAILABLE' };
     }
 
@@ -404,6 +412,35 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
     const playersToRefund = lobby.players.filter(p => !p.refunded_at);
 
     for (const p of playersToRefund) {
+      // MEDIUM-5 FIX: Check and track refund attempts
+      const attemptKey = `${lobbyId}-${p.id}`;
+      const attemptData = refundAttempts.get(attemptKey) || { attempts: 0, lastAttempt: 0 };
+
+      // Reset attempts if enough time has passed
+      if (Date.now() - attemptData.lastAttempt > REFUND_ATTEMPT_RESET_MS) {
+        attemptData.attempts = 0;
+      }
+
+      // Check if max attempts exceeded
+      if (attemptData.attempts >= MAX_REFUND_ATTEMPTS) {
+        console.error(`[REFUND] Max attempts (${MAX_REFUND_ATTEMPTS}) exceeded for player ${p.user_id} in lobby ${lobbyId}`);
+
+        sendAlert(AlertType.REFUND_FAILED, {
+          lobbyId,
+          playerAddress: p.wallet_address,
+          error: `Max refund attempts (${MAX_REFUND_ATTEMPTS}) exceeded - MANUAL INTERVENTION REQUIRED`,
+          attempts: attemptData.attempts,
+          critical: true,
+        }).catch(err => console.error('Alert send failed:', err.message));
+
+        continue;
+      }
+
+      // Track this attempt
+      attemptData.attempts++;
+      attemptData.lastAttempt = Date.now();
+      refundAttempts.set(attemptKey, attemptData);
+
       let result;
       try {
         result = await payments.sendRefundFromLobby(
@@ -422,6 +459,9 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
         p.refund_reason = 'timeout';
         p.refund_tx_hash = result.txHash;
 
+        // Clear attempt tracking on success
+        refundAttempts.delete(attemptKey);
+
         refunds.push({
           userId: p.user_id,
           username: p.username || protocol.truncateAddress(p.wallet_address),
@@ -429,13 +469,14 @@ async function processTimeoutRefund(lobbyId, requestingUserId) {
           txHash: result.txHash,
         });
       } else {
-        console.error(`Failed to refund player ${p.user_id}:`, result.error);
+        console.error(`Failed to refund player ${p.user_id} (attempt ${attemptData.attempts}/${MAX_REFUND_ATTEMPTS}):`, result.error);
 
         // Alert on refund failure
         sendAlert(AlertType.REFUND_FAILED, {
           lobbyId,
           playerAddress: p.wallet_address,
           error: result.error,
+          attempts: attemptData.attempts,
         }).catch(err => console.error('Alert send failed:', err.message));
       }
     }
@@ -468,6 +509,36 @@ async function processLobbyRefund(lobbyId, reason) {
     const playersToRefund = lobby.players.filter(p => !p.refunded_at);
 
     for (const p of playersToRefund) {
+      // MEDIUM-5 FIX: Check and track refund attempts
+      const attemptKey = `${lobbyId}-${p.id}`;
+      const attemptData = refundAttempts.get(attemptKey) || { attempts: 0, lastAttempt: 0 };
+
+      // Reset attempts if enough time has passed
+      if (Date.now() - attemptData.lastAttempt > REFUND_ATTEMPT_RESET_MS) {
+        attemptData.attempts = 0;
+      }
+
+      // Check if max attempts exceeded
+      if (attemptData.attempts >= MAX_REFUND_ATTEMPTS) {
+        console.error(`[REFUND] Max attempts (${MAX_REFUND_ATTEMPTS}) exceeded for player ${p.user_id} in lobby ${lobbyId}`);
+
+        // Send critical alert - manual intervention required
+        sendAlert(AlertType.REFUND_FAILED, {
+          lobbyId,
+          playerAddress: p.wallet_address,
+          error: `Max refund attempts (${MAX_REFUND_ATTEMPTS}) exceeded - MANUAL INTERVENTION REQUIRED`,
+          attempts: attemptData.attempts,
+          critical: true,
+        }).catch(err => console.error('Alert send failed:', err.message));
+
+        continue; // Skip this player, don't attempt refund
+      }
+
+      // Track this attempt
+      attemptData.attempts++;
+      attemptData.lastAttempt = Date.now();
+      refundAttempts.set(attemptKey, attemptData);
+
       let result;
       try {
         // Use lobby wallet for refunds - the USDC is already there from deposits
@@ -487,6 +558,9 @@ async function processLobbyRefund(lobbyId, reason) {
         p.refund_reason = reason;
         p.refund_tx_hash = result.txHash;
 
+        // Clear attempt tracking on success
+        refundAttempts.delete(attemptKey);
+
         refunds.push({
           userId: p.user_id,
           username: p.username || protocol.truncateAddress(p.wallet_address),
@@ -494,13 +568,14 @@ async function processLobbyRefund(lobbyId, reason) {
           txHash: result.txHash,
         });
       } else {
-        console.error(`Failed to refund player ${p.user_id}:`, result.error);
+        console.error(`Failed to refund player ${p.user_id} (attempt ${attemptData.attempts}/${MAX_REFUND_ATTEMPTS}):`, result.error);
 
         // Alert on refund failure
         sendAlert(AlertType.REFUND_FAILED, {
           lobbyId,
           playerAddress: p.wallet_address,
           error: result.error,
+          attempts: attemptData.attempts,
         }).catch(err => console.error('Alert send failed:', err.message));
       }
     }

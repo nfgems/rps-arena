@@ -569,7 +569,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
         return;
       }
 
-      const { message, error } = protocol.parseMessage(data.toString());
+      const { message, error } = protocol.parseMessage(data.toString(), { isAdmin: isAdminPort });
       if (!message) {
         // Log validation errors for debugging (not shown to client for security)
         if (error) {
@@ -759,7 +759,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
       if (lobbyData.status === 'ready' && players.length === 3) {
         setTimeout(async () => {
           try {
-            const newMatch = await match.startMatch(lobbyId);
+            const newMatch = await match.startMatch(lobbyId, isAdminPort);
             currentMatchId = newMatch.id;
           } catch (error) {
             console.error('Failed to start match:', error);
@@ -980,9 +980,15 @@ async function initialize() {
     console.log(`Production server running on port ${PUBLIC_PORT} (payments required)`);
   });
 
-  // Start admin server (port 3001)
-  adminServer.listen(ADMIN_PORT, () => {
-    console.log(`Admin server running on port ${ADMIN_PORT} (free joins, bot management)`);
+  // Start admin server (port 3001) - SECURITY: Bind to localhost only
+  // This prevents the admin port from being accessible from the network
+  // Admin port allows payment bypass, so it must NEVER be exposed to the internet
+  const ADMIN_BIND_ADDRESS = process.env.ADMIN_BIND_ADDRESS || '127.0.0.1';
+  adminServer.listen(ADMIN_PORT, ADMIN_BIND_ADDRESS, () => {
+    console.log(`Admin server running on ${ADMIN_BIND_ADDRESS}:${ADMIN_PORT} (free joins, bot management)`);
+    if (ADMIN_BIND_ADDRESS !== '127.0.0.1' && ADMIN_BIND_ADDRESS !== 'localhost') {
+      console.warn(`[SECURITY WARNING] Admin port bound to ${ADMIN_BIND_ADDRESS} - ensure firewall blocks external access!`);
+    }
   });
 
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
