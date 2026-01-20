@@ -648,6 +648,7 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
           break;
 
         case 'START_TUTORIAL':
+          console.log('[DEBUG] Received START_TUTORIAL message');
           handleStartTutorial();
           break;
 
@@ -849,18 +850,22 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
     }
 
     function handleStartTutorial() {
+      console.log('[DEBUG] handleStartTutorial called, authenticated:', authenticated, 'userId:', userId);
       if (!authenticated) {
+        console.log('[DEBUG] Not authenticated, rejecting');
         ws.send(protocol.createError('INVALID_SESSION'));
         return;
       }
 
       // Don't allow tutorial if in a lobby or match
       if (currentLobbyId || currentMatchId) {
+        console.log('[DEBUG] Already in lobby/match, rejecting');
         ws.send(protocol.createError('ALREADY_IN_GAME'));
         return;
       }
 
       // Start the tutorial
+      console.log('[DEBUG] Starting tutorial for user:', userId);
       tutorial.startTutorial(userId, ws);
       console.log(`[TUTORIAL] Started for user ${userId}`);
     }
