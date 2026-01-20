@@ -155,6 +155,12 @@ const UI = (function () {
     document.getElementById('filter-monthly').addEventListener('click', () => loadLeaderboard('monthly'));
     document.getElementById('filter-weekly').addEventListener('click', () => loadLeaderboard('weekly'));
 
+    // Tutorial buttons
+    document.getElementById('start-tutorial-btn').addEventListener('click', handleStartTutorial);
+    document.getElementById('tutorial-exit-btn').addEventListener('click', handleExitTutorial);
+    document.getElementById('tutorial-complete-btn').addEventListener('click', handleTutorialComplete);
+    document.getElementById('how-to-play-tutorial-btn').addEventListener('click', handleStartTutorial);
+
     // Network event listeners
     Network.addEventListener('LOBBY_LIST', handleLobbyList);
     Network.addEventListener('LOBBY_UPDATE', handleLobbyUpdate);
@@ -285,6 +291,35 @@ Expiration Time: ${expirationTime}`;
 
   function handlePlayAgain() {
     Confetti.stop();
+    showScreen('lobby');
+  }
+
+  // ============================================
+  // Tutorial Handlers
+  // ============================================
+
+  function handleStartTutorial() {
+    // Start the tutorial
+    if (typeof Tutorial !== 'undefined') {
+      Tutorial.start();
+    } else {
+      console.error('Tutorial module not loaded');
+    }
+  }
+
+  function handleExitTutorial() {
+    if (typeof Tutorial !== 'undefined') {
+      Tutorial.end();
+    }
+    showScreen('lobby');
+  }
+
+  function handleTutorialComplete() {
+    if (typeof Tutorial !== 'undefined') {
+      Tutorial.cleanup();
+    }
+    // Hide the complete overlay
+    document.getElementById('tutorial-complete-overlay').classList.add('hidden');
     showScreen('lobby');
   }
 

@@ -50,6 +50,20 @@
     <!-- Lobbies Tab Content -->
     <div id="lobbies-tab" class="tab-content">
       <div class="lobby-content">
+        <!-- Tutorial Banner -->
+        <div class="tutorial-banner">
+          <div class="tutorial-banner-content">
+            <div class="tutorial-banner-text">
+              <span class="tutorial-banner-icon">🎮</span>
+              <div>
+                <strong>New to RPS Arena?</strong>
+                <p>Try our free practice mode to learn the game mechanics!</p>
+              </div>
+            </div>
+            <button id="start-tutorial-btn" class="btn btn-primary tutorial-btn">Start Tutorial</button>
+          </div>
+        </div>
+
         <h3>Select a Lobby</h3>
         <div id="lobby-list" class="lobby-list">
           <!-- Lobbies populated by JS -->
@@ -62,6 +76,15 @@
     <div id="how-to-play-tab" class="tab-content hidden">
       <div class="how-to-play-content">
         <h3>How to Play</h3>
+
+        <!-- Interactive Tutorial Banner -->
+        <div class="tutorial-promo-box">
+          <div class="tutorial-promo-content">
+            <strong>Learn by Doing!</strong>
+            <p>Try our free interactive tutorial to practice all game mechanics before playing for real.</p>
+          </div>
+          <button id="how-to-play-tutorial-btn" class="btn btn-primary">Start Tutorial</button>
+        </div>
 
         <!-- Quick Start -->
         <section class="guide-section">
@@ -81,7 +104,11 @@
             </div>
             <div class="quick-step">
               <span class="step-number">4</span>
-              <span class="step-text">Run into opponents to eliminate them, or collect hearts in Showdown - win 2.4 USDC!</span>
+              <span class="step-text">Eliminate an opponent to trigger Showdown mode</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">5</span>
+              <span class="step-text">Collect 2 hearts before your rival to win 2.4 USDC!</span>
             </div>
           </div>
         </section>
@@ -477,6 +504,33 @@
     </div>
   </div>
 
+  <!-- Tutorial Screen -->
+  <div id="tutorial-screen" class="screen hidden">
+    <canvas id="tutorial-canvas"></canvas>
+
+    <!-- Tutorial Instruction Overlay -->
+    <div id="tutorial-instruction-overlay" class="tutorial-instruction-overlay">
+      <div class="tutorial-instruction-box">
+        <h3 id="tutorial-instruction-title">Welcome to RPS Arena!</h3>
+        <p id="tutorial-instruction-text">Use WASD or Arrow Keys to move around the arena.</p>
+        <p id="tutorial-instruction-subtext" class="tutorial-subtext">Move to any edge of the arena to continue.</p>
+      </div>
+    </div>
+
+    <!-- Tutorial Exit Button -->
+    <button id="tutorial-exit-btn" class="btn btn-secondary tutorial-exit-btn">Exit Tutorial</button>
+
+    <!-- Tutorial Complete Overlay -->
+    <div id="tutorial-complete-overlay" class="tutorial-complete-overlay hidden">
+      <div class="tutorial-complete-box">
+        <h2>Tutorial Complete!</h2>
+        <p>You now know how to play RPS Arena!</p>
+        <p class="tutorial-complete-subtext">Join a real lobby to compete for USDC prizes!</p>
+        <button id="tutorial-complete-btn" class="btn btn-primary">Return to Lobby</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Match Result Screen -->
   <div id="result-screen" class="screen hidden">
     <div class="result-content">
@@ -565,7 +619,11 @@
             </div>
             <div class="quick-step">
               <span class="step-number">4</span>
-              <span class="step-text">Run into opponents to eliminate them, or collect hearts in Showdown - win 2.4 USDC!</span>
+              <span class="step-text">Eliminate an opponent to trigger Showdown mode</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">5</span>
+              <span class="step-text">Collect 2 hearts before your rival to win 2.4 USDC!</span>
             </div>
           </div>
         </section>
@@ -861,6 +919,7 @@
   <script src="src/renderer.js"></script>
   <script src="src/confetti.js"></script>
   <script src="src/lobbyBackground.js"></script>
+  <script src="src/tutorial.js"></script>
   <script src="src/ui.js"></script>
   <script src="src/main.js"></script>
 </body>

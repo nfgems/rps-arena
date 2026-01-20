@@ -24,6 +24,7 @@ const lobby = require('./lobby');
 const match = require('./match');
 const payments = require('./payments');
 const bot = require('./bot');
+const tutorial = require('./tutorial');
 const { sendAlert, AlertType } = require('./alerts');
 const config = require('./config');
 
@@ -646,6 +647,18 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
           handleInput(message);
           break;
 
+        case 'START_TUTORIAL':
+          handleStartTutorial();
+          break;
+
+        case 'TUTORIAL_INPUT':
+          handleTutorialInput(message);
+          break;
+
+        case 'END_TUTORIAL':
+          handleEndTutorial();
+          break;
+
         default:
           console.log('Unknown message type:', message.type);
       }
@@ -833,6 +846,45 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
         dirY: message.dirY,
         sequence: message.sequence,
       });
+    }
+
+    function handleStartTutorial() {
+      if (!authenticated) {
+        ws.send(protocol.createError('INVALID_SESSION'));
+        return;
+      }
+
+      // Don't allow tutorial if in a lobby or match
+      if (currentLobbyId || currentMatchId) {
+        ws.send(protocol.createError('ALREADY_IN_GAME'));
+        return;
+      }
+
+      // Start the tutorial
+      tutorial.startTutorial(userId, ws);
+      console.log(`[TUTORIAL] Started for user ${userId}`);
+    }
+
+    function handleTutorialInput(message) {
+      if (!authenticated) return;
+
+      // Check if user is in tutorial
+      if (!tutorial.isInTutorial(userId)) return;
+
+      tutorial.processInput(userId, {
+        dirX: message.dirX,
+        dirY: message.dirY,
+        sequence: message.sequence,
+      });
+    }
+
+    function handleEndTutorial() {
+      if (!authenticated) return;
+
+      if (tutorial.isInTutorial(userId)) {
+        tutorial.endTutorial(userId);
+        console.log(`[TUTORIAL] Ended by user ${userId}`);
+      }
     }
   });
 }

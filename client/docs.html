@@ -321,7 +321,7 @@
           <thead><tr><th>Collision Type</th><th>Result</th><th>Effect</th></tr></thead>
           <tbody>
             <tr><td>Winning collision</td><td>Attacker wins</td><td>Defender eliminated instantly</td></tr>
-            <tr><td>Same role collision</td><td>Bounce</td><td>Both players pushed apart 10px</td></tr>
+            <tr><td>Neutral collision (showdown)</td><td>Bounce</td><td>Both players pushed apart 10px</td></tr>
             <tr><td>Losing collision</td><td>Defender wins</td><td>Attacker eliminated instantly</td></tr>
           </tbody>
         </table>
@@ -627,7 +627,7 @@
             <tr><td><code>GAME_START</code></td><td>Preview ended, movement enabled</td></tr>
             <tr><td><code>SNAPSHOT</code></td><td>Game state update (20 Hz) with all player positions</td></tr>
             <tr><td><code>ELIMINATION</code></td><td>Player eliminated event</td></tr>
-            <tr><td><code>BOUNCE</code></td><td>Same-role collision bounce</td></tr>
+            <tr><td><code>BOUNCE</code></td><td>Neutral collision bounce (showdown)</td></tr>
             <tr><td><code>SHOWDOWN_START</code></td><td>2 players remain, heart positions sent</td></tr>
             <tr><td><code>SHOWDOWN_READY</code></td><td>Freeze ended, race begins</td></tr>
             <tr><td><code>HEART_CAPTURED</code></td><td>Player captured a heart</td></tr>
