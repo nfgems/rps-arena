@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPS Arena - Technical Documentation</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { overflow: auto; }
+    .docs-container { max-width: 1400px; margin: 0 auto; padding: 80px 40px 60px; min-height: 100vh; }
+    .docs-header { position: fixed; top: 0; left: 0; right: 0; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; background: rgba(22, 33, 62, 0.98); backdrop-filter: blur(10px); z-index: 1000; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    .docs-header h1 { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--rock-color), var(--paper-color), var(--scissors-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .docs-header .back-link { color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    .docs-header .back-link:hover { color: var(--accent); }
+    .docs-hero { text-align: center; padding: 60px 0; margin-bottom: 40px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    .docs-hero h1 { font-size: 48px; font-weight: 900; margin-bottom: 16px; background: linear-gradient(135deg, var(--rock-color), var(--paper-color), var(--scissors-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .docs-hero p { font-size: 18px; color: var(--text-secondary); max-width: 600px; margin: 0 auto; }
+    .docs-nav { position: sticky; top: 70px; background: var(--bg-card); border-radius: 12px; padding: 20px; margin-bottom: 40px; z-index: 100; }
+    .docs-nav-title { font-size: 12px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; letter-spacing: 1px; }
+    .docs-nav-links { display: flex; flex-wrap: wrap; gap: 8px; }
+    .docs-nav-links a { padding: 8px 16px; background: var(--bg-dark); border-radius: 20px; color: var(--text-secondary); text-decoration: none; font-size: 13px; transition: all 0.2s; }
+    .docs-nav-links a:hover { background: var(--accent); color: white; }
+    .docs-section { margin-bottom: 60px; }
+    .docs-section h2 { font-size: 32px; font-weight: 700; margin-bottom: 24px; padding-bottom: 12px; border-bottom: 2px solid var(--accent); display: flex; align-items: center; gap: 12px; }
+    .docs-section h2 .section-number { background: var(--accent); color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .docs-section h3 { font-size: 22px; font-weight: 600; margin: 32px 0 16px; color: var(--text-primary); }
+    .docs-section h4 { font-size: 18px; font-weight: 600; margin: 24px 0 12px; color: var(--rock-color); }
+    .docs-section h5 { font-size: 16px; font-weight: 600; margin: 20px 0 10px; color: var(--paper-color); }
+    .docs-section p { color: var(--text-secondary); line-height: 1.8; margin-bottom: 16px; }
+    .docs-section ul, .docs-section ol { color: var(--text-secondary); line-height: 1.8; margin-bottom: 16px; padding-left: 24px; }
+    .docs-section li { margin-bottom: 8px; }
+    .docs-section code { background: var(--bg-dark); padding: 2px 8px; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; color: var(--scissors-color); }
+    .code-block { background: #0d1117; border-radius: 12px; padding: 20px; margin: 16px 0; overflow-x: auto; border: 1px solid rgba(255, 255, 255, 0.1); }
+    .code-block pre { margin: 0; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6; color: #e6edf3; }
+    .code-block .comment { color: #8b949e; }
+    .code-block .keyword { color: #ff7b72; }
+    .code-block .string { color: #a5d6ff; }
+    .code-block .number { color: #79c0ff; }
+    .info-card { background: var(--bg-card); border-radius: 12px; padding: 24px; margin: 20px 0; border-left: 4px solid var(--accent); }
+    .info-card.success { border-left-color: var(--success); }
+    .info-card.warning { border-left-color: var(--warning); }
+    .info-card.info { border-left-color: var(--paper-color); }
+    .info-card h4 { margin: 0 0 8px 0; color: var(--text-primary); }
+    .info-card p { margin: 0; }
+    .specs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin: 20px 0; }
+    .spec-card { background: var(--bg-card); border-radius: 12px; padding: 24px; border: 1px solid rgba(255, 255, 255, 0.1); }
+    .spec-card h4 { margin: 0 0 16px 0; font-size: 16px; color: var(--text-primary); }
+    .spec-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+    .spec-item:last-child { border-bottom: none; }
+    .spec-label { color: var(--text-secondary); font-size: 14px; }
+    .spec-value { color: var(--text-primary); font-weight: 600; font-size: 14px; }
+    .spec-value.highlight { color: var(--accent); }
+    .table-container { overflow-x: auto; margin: 20px 0; }
+    .docs-table { width: 100%; border-collapse: collapse; background: var(--bg-card); border-radius: 12px; overflow: hidden; }
+    .docs-table th { background: var(--bg-dark); padding: 16px; text-align: left; font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
+    .docs-table td { padding: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 14px; color: var(--text-secondary); }
+    .docs-table tr:last-child td { border-bottom: none; }
+    .docs-table tr:hover td { background: rgba(255, 255, 255, 0.02); }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-get { background: rgba(46, 204, 113, 0.2); color: var(--success); }
+    .badge-post { background: rgba(30, 144, 255, 0.2); color: var(--paper-color); }
+    .badge-ws { background: rgba(255, 165, 0, 0.2); color: var(--rock-color); }
+    .badge-client { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
+    .badge-server { background: rgba(46, 204, 113, 0.2); color: var(--success); }
+    .flow-diagram { background: var(--bg-card); border-radius: 12px; padding: 30px; margin: 20px 0; text-align: center; }
+    .flow-steps { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; }
+    .flow-step { background: var(--bg-dark); padding: 12px 20px; border-radius: 8px; font-size: 14px; color: var(--text-primary); border: 1px solid rgba(255, 255, 255, 0.1); }
+    .flow-step.highlight { background: var(--accent); border-color: var(--accent); }
+    .flow-arrow { color: var(--text-secondary); font-size: 20px; }
+    .architecture-diagram { background: var(--bg-card); border-radius: 12px; padding: 40px; margin: 30px 0; }
+    .arch-row { display: flex; justify-content: center; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+    .arch-box { background: var(--bg-dark); border: 2px solid var(--accent); border-radius: 12px; padding: 20px 30px; text-align: center; min-width: 150px; }
+    .arch-box.client { border-color: var(--paper-color); }
+    .arch-box.server { border-color: var(--success); }
+    .arch-box.database { border-color: var(--rock-color); }
+    .arch-box.blockchain { border-color: var(--scissors-color); }
+    .arch-box h5 { margin: 0 0 8px 0; font-size: 14px; color: var(--text-primary); }
+    .arch-box p { margin: 0; font-size: 12px; color: var(--text-secondary); }
+    .arch-connector { text-align: center; color: var(--text-secondary); font-size: 24px; }
+    .file-tree { background: var(--bg-dark); border-radius: 12px; padding: 24px; margin: 20px 0; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.8; }
+    .file-tree .folder { color: var(--rock-color); }
+    .file-tree .file { color: var(--text-secondary); }
+    .file-tree .comment { color: var(--text-secondary); opacity: 0.6; }
+    .stats-highlight { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin: 30px 0; }
+    .stat-box { background: linear-gradient(135deg, var(--bg-card), var(--bg-dark)); border-radius: 16px; padding: 24px; text-align: center; border: 1px solid rgba(255, 255, 255, 0.1); }
+    .stat-box .value { font-size: 32px; font-weight: 900; color: var(--accent); display: block; }
+    .stat-box .label { font-size: 13px; color: var(--text-secondary); margin-top: 8px; display: block; }
+    .security-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+    .security-item { background: var(--bg-card); border-radius: 12px; padding: 24px; border-left: 4px solid var(--success); }
+    .security-item h4 { margin: 0 0 12px 0; color: var(--text-primary); font-size: 16px; }
+    .security-item p { margin: 0; font-size: 14px; }
+    .version-badge { display: inline-block; background: var(--accent); color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 12px; }
+    @media (max-width: 768px) {
+      .docs-container { padding: 70px 20px 40px; }
+      .docs-hero h1 { font-size: 32px; }
+      .docs-section h2 { font-size: 24px; }
+      .specs-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="docs-header">
+    <h1>RPS ARENA DOCS</h1>
+    <a href="index.html" class="back-link">Back to Game</a>
+  </header>
+
+  <div class="docs-container">
+    <section class="docs-hero">
+      <h1>Technical Documentation</h1>
+      <p>Complete technical reference for RPS Arena - a real-time multiplayer blockchain game built on Base network with USDC payments.</p>
+    </section>
+
+    <nav class="docs-nav">
+      <div class="docs-nav-title">Quick Navigation</div>
+      <div class="docs-nav-links">
+        <a href="#overview">Overview</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#game-mechanics">Game Mechanics</a>
+        <a href="#showdown">Showdown Mode</a>
+        <a href="#networking">Networking</a>
+        <a href="#websocket-api">WebSocket API</a>
+        <a href="#rest-api">REST API</a>
+        <a href="#database">Database</a>
+        <a href="#resilience">Resilience</a>
+        <a href="#blockchain">Blockchain</a>
+        <a href="#authentication">Authentication</a>
+        <a href="#profiles">Profiles</a>
+        <a href="#security">Security</a>
+        <a href="#bots">Bot System</a>
+        <a href="#client">Client</a>
+        <a href="#testing">Testing</a>
+        <a href="#deployment">Deployment</a>
+        <a href="#configuration">Configuration</a>
+      </div>
+    </nav>
+
+    <!-- Section 1: Overview -->
+    <section id="overview" class="docs-section">
+      <h2><span class="section-number">1</span> System Overview</h2>
+      <p>RPS Arena is a real-time competitive multiplayer game where three players battle using Rock-Paper-Scissors mechanics in a 2D arena. The platform leverages blockchain technology for trustless payments and transparent prize distribution.</p>
+
+      <div class="stats-highlight">
+        <div class="stat-box"><span class="value">30 Hz</span><span class="label">Physics Tick Rate</span></div>
+        <div class="stat-box"><span class="value">20 Hz</span><span class="label">Client Snapshot Rate</span></div>
+        <div class="stat-box"><span class="value">3</span><span class="label">Players Per Match</span></div>
+        <div class="stat-box"><span class="value">12</span><span class="label">Concurrent Lobbies</span></div>
+        <div class="stat-box"><span class="value">1 USDC</span><span class="label">Entry Fee</span></div>
+        <div class="stat-box"><span class="value">2.4 USDC</span><span class="label">Winner Payout</span></div>
+      </div>
+
+      <h3>Technology Stack</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Backend</h4>
+          <div class="spec-item"><span class="spec-label">Runtime</span><span class="spec-value">Node.js >= 18.0.0</span></div>
+          <div class="spec-item"><span class="spec-label">HTTP Server</span><span class="spec-value">Express 4.18.2</span></div>
+          <div class="spec-item"><span class="spec-label">WebSocket</span><span class="spec-value">ws 8.16.0</span></div>
+          <div class="spec-item"><span class="spec-label">Database</span><span class="spec-value">SQLite (better-sqlite3)</span></div>
+          <div class="spec-item"><span class="spec-label">Blockchain</span><span class="spec-value">ethers.js 6.11.0</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Frontend</h4>
+          <div class="spec-item"><span class="spec-label">Rendering</span><span class="spec-value">HTML5 Canvas</span></div>
+          <div class="spec-item"><span class="spec-label">Framework</span><span class="spec-value">Vanilla JavaScript</span></div>
+          <div class="spec-item"><span class="spec-label">Wallet Support</span><span class="spec-value">EIP-6963</span></div>
+          <div class="spec-item"><span class="spec-label">Network</span><span class="spec-value">WebSocket API</span></div>
+          <div class="spec-item"><span class="spec-label">Authentication</span><span class="spec-value">SIWE (EIP-4361)</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Blockchain</h4>
+          <div class="spec-item"><span class="spec-label">Network</span><span class="spec-value">Base (Chain ID: 8453)</span></div>
+          <div class="spec-item"><span class="spec-label">Token</span><span class="spec-value">USDC</span></div>
+          <div class="spec-item"><span class="spec-label">Contract</span><span class="spec-value">0x833589fCD6...</span></div>
+          <div class="spec-item"><span class="spec-label">Confirmations</span><span class="spec-value">3 blocks minimum</span></div>
+          <div class="spec-item"><span class="spec-label">RPC Providers</span><span class="spec-value">Alchemy + 3 Fallbacks</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Infrastructure</h4>
+          <div class="spec-item"><span class="spec-label">Deployment</span><span class="spec-value">Railway</span></div>
+          <div class="spec-item"><span class="spec-label">Architecture</span><span class="spec-value">Single Instance</span></div>
+          <div class="spec-item"><span class="spec-label">Monitoring</span><span class="spec-value">Sentry + Discord</span></div>
+          <div class="spec-item"><span class="spec-label">Logging</span><span class="spec-value">Winston</span></div>
+          <div class="spec-item"><span class="spec-label">Backups</span><span class="spec-value">Hourly (24 retained)</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Architecture -->
+    <section id="architecture" class="docs-section">
+      <h2><span class="section-number">2</span> System Architecture</h2>
+
+      <h3>High-Level Architecture</h3>
+      <div class="architecture-diagram">
+        <div class="arch-row">
+          <div class="arch-box client"><h5>Browser Client</h5><p>Canvas Renderer<br>WebSocket Client<br>EIP-6963 Wallets</p></div>
+        </div>
+        <div class="arch-connector">&#8595; WebSocket + HTTPS &#8595;</div>
+        <div class="arch-row">
+          <div class="arch-box server"><h5>Node.js Server</h5><p>Express HTTP<br>WebSocket Server<br>Game Loop (30Hz)</p></div>
+        </div>
+        <div class="arch-connector">&#8595;&#8595;&#8595;</div>
+        <div class="arch-row">
+          <div class="arch-box database"><h5>SQLite Database</h5><p>Users, Matches<br>Lobbies, Stats<br>WAL Mode</p></div>
+          <div class="arch-box blockchain"><h5>Base Network</h5><p>USDC Payments<br>Wallet Verification<br>Prize Distribution</p></div>
+        </div>
+      </div>
+
+      <h3>Dual-Port Architecture</h3>
+      <p>The server operates on two ports for separation of concerns:</p>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Port 3000 (Production)</h4>
+          <div class="spec-item"><span class="spec-label">Purpose</span><span class="spec-value">Public player access</span></div>
+          <div class="spec-item"><span class="spec-label">Payment</span><span class="spec-value">1 USDC required</span></div>
+          <div class="spec-item"><span class="spec-label">Features</span><span class="spec-value">Full game functionality</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Port 3001 (Admin)</h4>
+          <div class="spec-item"><span class="spec-label">Purpose</span><span class="spec-value">Testing & administration</span></div>
+          <div class="spec-item"><span class="spec-label">Payment</span><span class="spec-value">Free joins allowed</span></div>
+          <div class="spec-item"><span class="spec-label">Features</span><span class="spec-value">Bot management, resets, backups</span></div>
+        </div>
+      </div>
+
+      <h3>Project Structure</h3>
+      <div class="file-tree">
+        <span class="folder">RPS-ARENA/</span><br>
+        ├── <span class="folder">server/</span> <span class="comment"># Backend application</span><br>
+        │   ├── <span class="file">index.js</span> <span class="comment"># Main entry, HTTP/WS servers, dual-port setup</span><br>
+        │   ├── <span class="file">match.js</span> <span class="comment"># Match logic, game loop, state persistence</span><br>
+        │   ├── <span class="file">physics.js</span> <span class="comment"># Movement, swept collision, bouncing</span><br>
+        │   ├── <span class="file">lobby.js</span> <span class="comment"># Lobby management, mutex locking, timeouts</span><br>
+        │   ├── <span class="file">payments.js</span> <span class="comment"># Blockchain transactions, retry logic, sweeping</span><br>
+        │   ├── <span class="file">auth.js</span> <span class="comment"># SIWE authentication</span><br>
+        │   ├── <span class="file">wallet.js</span> <span class="comment"># HD wallet derivation, AES encryption</span><br>
+        │   ├── <span class="file">database.js</span> <span class="comment"># SQLite operations, deferred queue, transactions</span><br>
+        │   ├── <span class="file">protocol.js</span> <span class="comment"># Message validation schemas</span><br>
+        │   ├── <span class="file">config.js</span> <span class="comment"># Centralized configuration</span><br>
+        │   ├── <span class="file">alerts.js</span> <span class="comment"># Discord webhooks with retry</span><br>
+        │   ├── <span class="file">logger.js</span> <span class="comment"># Winston logging setup</span><br>
+        │   ├── <span class="file">session.js</span> <span class="comment"># Session management, token rotation</span><br>
+        │   ├── <span class="file">bot.js</span> <span class="comment"># Bot players with AI movement</span><br>
+        │   └── <span class="file">sentry.js</span> <span class="comment"># Error tracking initialization</span><br>
+        ├── <span class="folder">client/</span> <span class="comment"># Frontend application</span><br>
+        │   ├── <span class="file">index.html</span> <span class="comment"># Main game interface</span><br>
+        │   ├── <span class="file">style.css</span> <span class="comment"># Styling</span><br>
+        │   └── <span class="folder">src/</span><br>
+        │       ├── <span class="file">main.js</span> <span class="comment"># App initialization</span><br>
+        │       ├── <span class="file">network.js</span> <span class="comment"># WebSocket client, jittered backoff</span><br>
+        │       ├── <span class="file">wallet.js</span> <span class="comment"># EIP-6963 multi-wallet detection</span><br>
+        │       ├── <span class="file">ui.js</span> <span class="comment"># Screen management, modals</span><br>
+        │       ├── <span class="file">renderer.js</span> <span class="comment"># Canvas rendering, role icons</span><br>
+        │       ├── <span class="file">input.js</span> <span class="comment"># Keyboard handling, sequence tracking</span><br>
+        │       ├── <span class="file">interpolation.js</span> <span class="comment"># Position smoothing</span><br>
+        │       ├── <span class="file">confetti.js</span> <span class="comment"># Victory animation</span><br>
+        │       └── <span class="file">lobbyBackground.js</span> <span class="comment"># Animated lobby background</span><br>
+        ├── <span class="folder">database/</span> <span class="comment"># Schema files</span><br>
+        ├── <span class="folder">tests/</span> <span class="comment"># Test suites (security, load, e2e)</span><br>
+        ├── <span class="folder">backups/</span> <span class="comment"># Automated database backups</span><br>
+        ├── <span class="file">nixpacks.toml</span> <span class="comment"># Railway build config</span><br>
+        └── <span class="file">railway.json</span> <span class="comment"># Railway deployment config</span>
+      </div>
+
+      <div class="info-card warning">
+        <h4>Single Instance Constraint</h4>
+        <p>RPS Arena runs as a single instance due to in-memory WebSocket connections and game state. Horizontal scaling would require migration to Redis for session storage and PostgreSQL for distributed state management.</p>
+      </div>
+    </section>
+
+    <!-- Section 3: Game Mechanics -->
+    <section id="game-mechanics" class="docs-section">
+      <h2><span class="section-number">3</span> Game Mechanics</h2>
+
+      <h3>Core Gameplay</h3>
+      <p>Three players compete in a real-time arena using Rock-Paper-Scissors combat mechanics. Each player is assigned a role (Rock, Paper, or Scissors) and must eliminate opponents by colliding with the role they beat.</p>
+
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Arena Specifications</h4>
+          <div class="spec-item"><span class="spec-label">Width</span><span class="spec-value">1600 pixels</span></div>
+          <div class="spec-item"><span class="spec-label">Height</span><span class="spec-value">900 pixels</span></div>
+          <div class="spec-item"><span class="spec-label">Boundary</span><span class="spec-value">Clamped (no wrap)</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Player Properties</h4>
+          <div class="spec-item"><span class="spec-label">Radius</span><span class="spec-value">22 pixels</span></div>
+          <div class="spec-item"><span class="spec-label">Max Speed</span><span class="spec-value">450 px/sec</span></div>
+          <div class="spec-item"><span class="spec-label">Hits to Eliminate</span><span class="spec-value highlight">1 hit (instant)</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Timing</h4>
+          <div class="spec-item"><span class="spec-label">Physics Tick</span><span class="spec-value">30 Hz (33ms)</span></div>
+          <div class="spec-item"><span class="spec-label">Client Snapshot</span><span class="spec-value">20 Hz (50ms)</span></div>
+          <div class="spec-item"><span class="spec-label">Role Reveal</span><span class="spec-value">10 seconds</span></div>
+          <div class="spec-item"><span class="spec-label">Preview Phase</span><span class="spec-value">3 seconds</span></div>
+        </div>
+      </div>
+
+      <h3>Rock-Paper-Scissors Rules</h3>
+      <div class="flow-diagram">
+        <div class="flow-steps">
+          <div class="flow-step" style="background: var(--rock-color); color: black;">Rock (Orange)</div>
+          <div class="flow-arrow">beats</div>
+          <div class="flow-step" style="background: var(--scissors-color); color: black;">Scissors (Green)</div>
+          <div class="flow-arrow">beats</div>
+          <div class="flow-step" style="background: var(--paper-color); color: white;">Paper (Blue)</div>
+          <div class="flow-arrow">beats</div>
+          <div class="flow-step" style="background: var(--rock-color); color: black;">Rock</div>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Collision Type</th><th>Result</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td>Winning collision</td><td>Attacker wins</td><td>Defender eliminated instantly</td></tr>
+            <tr><td>Same role collision</td><td>Bounce</td><td>Both players pushed apart 10px</td></tr>
+            <tr><td>Losing collision</td><td>Defender wins</td><td>Attacker eliminated instantly</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Match Lifecycle</h3>
+      <div class="flow-diagram">
+        <div class="flow-steps">
+          <div class="flow-step">Join Lobby</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Wait (3 players)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Role Reveal (10s)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step highlight">Preview (3s)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Battle Phase</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Showdown or Winner</div>
+        </div>
+      </div>
+
+      <h3>Physics Engine</h3>
+      <h4>Swept Circle Collision Detection</h4>
+      <p>The physics engine uses swept circle collision detection to handle fast-moving players. This technique checks for collisions along the entire path of movement, preventing players from passing through each other.</p>
+      <div class="code-block">
+        <pre><span class="comment">// Collision radius = PLAYER_RADIUS * 2 = 44px</span>
+<span class="comment">// Bounce distance: 10px standard, 25px large</span>
+<span class="comment">// Max bounce iterations per tick: 2</span>
+
+<span class="keyword">function</span> checkCollision(p1, p2, deltaTime) {
+  <span class="comment">// Calculate relative velocity and trajectory</span>
+  <span class="keyword">const</span> relVel = subtract(p1.velocity, p2.velocity);
+  <span class="comment">// Solve quadratic for intersection time</span>
+  <span class="comment">// Returns collision point if within frame</span>
+}</pre>
+      </div>
+
+      <h4>Movement System</h4>
+      <ul>
+        <li><strong>Input:</strong> WASD or Arrow keys (8 directions + stationary)</li>
+        <li><strong>Normalization:</strong> Diagonal movement divided by &#8730;2 for equal speed</li>
+        <li><strong>Boundary:</strong> Players clamped to arena bounds minus radius</li>
+        <li><strong>Authority:</strong> Server-authoritative (client sends input, server calculates)</li>
+        <li><strong>Frozen State:</strong> Players frozen during countdown and showdown freeze</li>
+      </ul>
+    </section>
+
+    <!-- Section 4: Showdown Mode -->
+    <section id="showdown" class="docs-section">
+      <h2><span class="section-number">4</span> Showdown Mode</h2>
+
+      <div class="info-card" style="border-left-color: var(--accent);">
+        <h4>Triggered When 2 Players Remain</h4>
+        <p>When only 2 players remain alive, the game transitions to Showdown Mode - a heart collection race that determines the winner.</p>
+      </div>
+
+      <h3>Showdown Mechanics</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Phase 1: Freeze</h4>
+          <div class="spec-item"><span class="spec-label">Duration</span><span class="spec-value">3 seconds</span></div>
+          <div class="spec-item"><span class="spec-label">Display</span><span class="spec-value">"SHOWDOWN" text</span></div>
+          <div class="spec-item"><span class="spec-label">Players</span><span class="spec-value">Frozen in place</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Phase 2: Heart Race</h4>
+          <div class="spec-item"><span class="spec-label">Hearts Spawned</span><span class="spec-value">3 hearts</span></div>
+          <div class="spec-item"><span class="spec-label">Hearts to Win</span><span class="spec-value highlight">2 hearts</span></div>
+          <div class="spec-item"><span class="spec-label">Spawn Location</span><span class="spec-value">Random in arena</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Collision Behavior</h4>
+          <div class="spec-item"><span class="spec-label">Player Collisions</span><span class="spec-value">Bounce only</span></div>
+          <div class="spec-item"><span class="spec-label">Eliminations</span><span class="spec-value">Disabled</span></div>
+          <div class="spec-item"><span class="spec-label">Heart Capture</span><span class="spec-value">Proximity-based</span></div>
+        </div>
+      </div>
+
+      <h3>Showdown Protocol Messages</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Message</th><th>Direction</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>SHOWDOWN_START</code></td><td><span class="badge badge-server">Server</span></td><td>Announces showdown mode, includes heart positions</td></tr>
+            <tr><td><code>SHOWDOWN_READY</code></td><td><span class="badge badge-server">Server</span></td><td>Freeze period ended, race begins</td></tr>
+            <tr><td><code>HEART_CAPTURED</code></td><td><span class="badge badge-server">Server</span></td><td>Heart captured by player (includes heartId, playerId, score)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Heart Object Structure</h3>
+      <div class="code-block">
+        <pre>{
+  <span class="string">"id"</span>: <span class="string">"heart-1"</span>,
+  <span class="string">"x"</span>: <span class="number">800</span>,
+  <span class="string">"y"</span>: <span class="number">450</span>,
+  <span class="string">"captured"</span>: <span class="keyword">false</span>,
+  <span class="string">"capturedBy"</span>: <span class="keyword">null</span>
+}</pre>
+      </div>
+
+      <div class="info-card warning">
+        <h4>Simultaneous Capture Tiebreaker</h4>
+        <p>If both players reach 2 hearts on the same tick, the winner is determined by random selection to ensure fairness.</p>
+      </div>
+    </section>
+
+    <!-- Section 5: Networking -->
+    <section id="networking" class="docs-section">
+      <h2><span class="section-number">5</span> Real-Time Networking</h2>
+
+      <h3>Network Model</h3>
+      <p>RPS Arena uses an authoritative server model with client-side interpolation:</p>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Server Authority</h4>
+          <div class="spec-item"><span class="spec-label">Game State</span><span class="spec-value">Server-authoritative</span></div>
+          <div class="spec-item"><span class="spec-label">Tick Rate</span><span class="spec-value">30 Hz</span></div>
+          <div class="spec-item"><span class="spec-label">Snapshot Rate</span><span class="spec-value">20 Hz</span></div>
+          <div class="spec-item"><span class="spec-label">State Persistence</span><span class="spec-value">Every 5 ticks</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Client Processing</h4>
+          <div class="spec-item"><span class="spec-label">Input Sampling</span><span class="spec-value">60 Hz (frame rate)</span></div>
+          <div class="spec-item"><span class="spec-label">Interpolation</span><span class="spec-value">Linear smoothing</span></div>
+          <div class="spec-item"><span class="spec-label">Sequence Tracking</span><span class="spec-value">Anti-cheat</span></div>
+        </div>
+      </div>
+
+      <h3>Reconnection System</h3>
+      <div class="info-card info">
+        <h4>Grace Period: 30 Seconds</h4>
+        <p>Disconnected players have 30 seconds to reconnect before automatic elimination. Features:</p>
+        <ul style="margin-top: 8px; margin-bottom: 0;">
+          <li>Player character freezes in place</li>
+          <li>Other players see "disconnected" indicator with countdown</li>
+          <li>Full state resync via <code>RECONNECT_STATE</code> message on reconnect</li>
+          <li>Session token rotation prevents replay attacks</li>
+          <li>Grace period cleared immediately on reconnect (race condition fix)</li>
+        </ul>
+      </div>
+
+      <h3>Connection Resilience</h3>
+      <div class="code-block">
+        <pre><span class="comment">// Client reconnection with jittered exponential backoff</span>
+<span class="keyword">const</span> baseDelay = <span class="number">1000</span>;       <span class="comment">// 1 second</span>
+<span class="keyword">const</span> maxDelay = <span class="number">30000</span>;       <span class="comment">// 30 seconds</span>
+<span class="keyword">const</span> maxAttempts = <span class="number">5</span>;
+
+<span class="comment">// Jitter prevents "thundering herd" on server restart</span>
+<span class="keyword">const</span> jitter = Math.random() * <span class="number">0.5</span> + <span class="number">0.5</span>;  <span class="comment">// 50-100%</span>
+<span class="keyword">const</span> delay = Math.min(baseDelay * Math.pow(<span class="number">2</span>, attempt) * jitter, maxDelay);</pre>
+      </div>
+    </section>
+
+    <!-- Section 6: WebSocket API -->
+    <section id="websocket-api" class="docs-section">
+      <h2><span class="section-number">6</span> WebSocket API Reference</h2>
+
+      <h3>Connection Parameters</h3>
+      <div class="code-block">
+        <pre><span class="keyword">const</span> config = {
+  pingInterval: <span class="number">5000</span>,       <span class="comment">// 5 seconds</span>
+  maxMessageSize: <span class="number">16384</span>,    <span class="comment">// 16 KB</span>
+  connectionTimeout: <span class="number">10000</span>, <span class="comment">// 10 seconds</span>
+};</pre>
+      </div>
+
+      <h3>Client to Server Messages</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Type</th><th>Description</th><th>Payload</th></tr></thead>
+          <tbody>
+            <tr><td><code>HELLO</code></td><td>Authenticate with session token</td><td><code>{ token: string }</code></td></tr>
+            <tr><td><code>JOIN_LOBBY</code></td><td>Join lobby with payment proof</td><td><code>{ lobbyId: number, txHash: string }</code></td></tr>
+            <tr><td><code>REQUEST_REFUND</code></td><td>Request timeout refund</td><td><code>{ lobbyId: number }</code></td></tr>
+            <tr><td><code>INPUT</code></td><td>Movement input</td><td><code>{ dirX: -1|0|1, dirY: -1|0|1, seq: number }</code></td></tr>
+            <tr><td><code>PING</code></td><td>Latency measurement</td><td><code>{ timestamp: number }</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Server to Client Messages</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>WELCOME</code></td><td>Authentication success with userId and serverTime</td></tr>
+            <tr><td><code>LOBBY_LIST</code></td><td>List of all available lobbies with status</td></tr>
+            <tr><td><code>LOBBY_UPDATE</code></td><td>Single lobby state change</td></tr>
+            <tr><td><code>MATCH_STARTING</code></td><td>Match begins, countdown starts</td></tr>
+            <tr><td><code>ROLE_ASSIGNMENT</code></td><td>Your assigned RPS role</td></tr>
+            <tr><td><code>COUNTDOWN</code></td><td>Countdown timer (10...0)</td></tr>
+            <tr><td><code>SNAPSHOT</code></td><td>Game state update (20 Hz) with all player positions</td></tr>
+            <tr><td><code>ELIMINATION</code></td><td>Player eliminated event</td></tr>
+            <tr><td><code>BOUNCE</code></td><td>Same-role collision bounce</td></tr>
+            <tr><td><code>SHOWDOWN_START</code></td><td>2 players remain, heart positions sent</td></tr>
+            <tr><td><code>SHOWDOWN_READY</code></td><td>Freeze ended, race begins</td></tr>
+            <tr><td><code>HEART_CAPTURED</code></td><td>Player captured a heart</td></tr>
+            <tr><td><code>MATCH_END</code></td><td>Match complete with winner and payouts</td></tr>
+            <tr><td><code>REFUND_PROCESSED</code></td><td>Refund transaction confirmed</td></tr>
+            <tr><td><code>PLAYER_DISCONNECT</code></td><td>Player disconnected (grace period countdown)</td></tr>
+            <tr><td><code>PLAYER_RECONNECT</code></td><td>Player reconnected</td></tr>
+            <tr><td><code>RECONNECT_STATE</code></td><td>Full state resync after reconnect</td></tr>
+            <tr><td><code>TOKEN_UPDATE</code></td><td>New session token (rotation)</td></tr>
+            <tr><td><code>PONG</code></td><td>Ping response with server timestamp</td></tr>
+            <tr><td><code>ERROR</code></td><td>Error with code and message</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Error Codes</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Code</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>AUTH_REQUIRED</code></td><td>No valid session token provided</td></tr>
+            <tr><td><code>AUTH_FAILED</code></td><td>Invalid or expired session token</td></tr>
+            <tr><td><code>LOBBY_FULL</code></td><td>Lobby already has 3 players</td></tr>
+            <tr><td><code>LOBBY_IN_PROGRESS</code></td><td>Match already started in this lobby</td></tr>
+            <tr><td><code>PAYMENT_REQUIRED</code></td><td>No valid payment transaction provided</td></tr>
+            <tr><td><code>PAYMENT_INVALID</code></td><td>Transaction verification failed</td></tr>
+            <tr><td><code>ALREADY_IN_LOBBY</code></td><td>Player is already in a lobby</td></tr>
+            <tr><td><code>RATE_LIMITED</code></td><td>Too many messages sent</td></tr>
+            <tr><td><code>INTERNAL_ERROR</code></td><td>Server-side error occurred</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 7: REST API -->
+    <section id="rest-api" class="docs-section">
+      <h2><span class="section-number">7</span> REST API Reference</h2>
+
+      <h3>Public Endpoints</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/health</code></td><td>Health check (DB, game loop, deferred queue)</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/auth</code></td><td>SIWE authentication</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/logout</code></td><td>Invalidate session</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/lobbies</code></td><td>List all lobbies</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/player/:wallet</code></td><td>Get player stats</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/player/:wallet/history</code></td><td>Match history (paginated)</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/leaderboard</code></td><td>Top 100 players (all/monthly/weekly)</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/player/username</code></td><td>Set username (requires 1+ match)</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/player/photo</code></td><td>Upload profile photo (max 500KB)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Admin Endpoints (Port 3001 Only)</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/bot/add</code></td><td>Add bot player to lobby</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/bot/fill</code></td><td>Fill lobby with bots</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/bot/list</code></td><td>List active bots</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/bot/remove</code></td><td>Remove specific bot</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/dev/reset</code></td><td>Reset lobby state</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/admin/backup</code></td><td>Create database backup</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/admin/backups</code></td><td>List existing backups</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/admin/checkpoint</code></td><td>Manual WAL checkpoint</td></tr>
+            <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/admin/backup/cleanup</code></td><td>Remove old backups</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 8: Database -->
+    <section id="database" class="docs-section">
+      <h2><span class="section-number">8</span> Database Schema</h2>
+
+      <h3>Configuration</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>SQLite Settings</h4>
+          <div class="spec-item"><span class="spec-label">Engine</span><span class="spec-value">SQLite 3</span></div>
+          <div class="spec-item"><span class="spec-label">Driver</span><span class="spec-value">better-sqlite3</span></div>
+          <div class="spec-item"><span class="spec-label">Journal Mode</span><span class="spec-value">WAL</span></div>
+          <div class="spec-item"><span class="spec-label">Foreign Keys</span><span class="spec-value">Enabled</span></div>
+          <div class="spec-item"><span class="spec-label">Synchronous</span><span class="spec-value">NORMAL</span></div>
+        </div>
+      </div>
+
+      <h3>Core Tables</h3>
+      <h4>users</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, wallet_address TEXT UNIQUE, username TEXT, created_at TEXT, updated_at TEXT</pre></div>
+
+      <h4>sessions</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, user_id TEXT, token TEXT UNIQUE, created_at TEXT, expires_at TEXT</pre></div>
+
+      <h4>lobbies (12 fixed)</h4>
+      <div class="code-block"><pre>id INTEGER PRIMARY KEY (1-12), status TEXT, deposit_address TEXT, deposit_private_key_encrypted TEXT, first_join_at TEXT, timeout_at TEXT, swept_at TEXT, current_match_id TEXT</pre></div>
+
+      <h4>lobby_players</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, lobby_id INTEGER, user_id TEXT, payment_tx_hash TEXT, payment_confirmed_at TEXT, refund_tx_hash TEXT, refund_reason TEXT, refunded_at TEXT, joined_at TEXT</pre></div>
+
+      <h4>matches</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, lobby_id INTEGER, status TEXT (countdown|running|finished|void), winner_id TEXT, rng_seed TEXT, created_at TEXT, countdown_at TEXT, running_at TEXT, ended_at TEXT, payout_amount INTEGER, payout_tx_hash TEXT</pre></div>
+
+      <h4>match_players</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, match_id TEXT, user_id TEXT, role TEXT (rock|paper|scissors), spawn_x REAL, spawn_y REAL, eliminated_at TEXT, eliminated_by TEXT, final_x REAL, final_y REAL</pre></div>
+
+      <h4>match_state (Crash Recovery)</h4>
+      <div class="code-block"><pre>match_id TEXT PRIMARY KEY, version TEXT, tick INTEGER, status TEXT, state_json TEXT, updated_at TEXT</pre></div>
+
+      <h4>match_events (Audit)</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, match_id TEXT, tick INTEGER, event_type TEXT (start|elimination|bounce|disconnect|end), data TEXT (JSON), created_at TEXT</pre></div>
+
+      <h4>player_stats (Denormalized)</h4>
+      <div class="code-block"><pre>wallet_address TEXT PRIMARY KEY, username TEXT, profile_photo TEXT, total_matches INTEGER, wins INTEGER, losses INTEGER, total_earnings_usdc INTEGER, total_spent_usdc INTEGER, current_win_streak INTEGER, best_win_streak INTEGER, first_match_at TEXT, last_match_at TEXT</pre></div>
+
+      <h4>payout_attempts (Audit)</h4>
+      <div class="code-block"><pre>id TEXT PRIMARY KEY, match_id TEXT, lobby_id INTEGER, recipient_address TEXT, amount_usdc INTEGER, attempt_number INTEGER, status TEXT (pending|success|failed), tx_hash TEXT, error_message TEXT, error_type TEXT (transient|permanent), source_wallet TEXT, treasury_balance_before INTEGER, created_at TEXT</pre></div>
+
+      <h4>reserved_usernames</h4>
+      <div class="code-block"><pre>username TEXT PRIMARY KEY, reserved_by TEXT, reserved_at TEXT</pre></div>
+
+      <h4>paid_wallets (Airdrop Tracking)</h4>
+      <div class="code-block"><pre>wallet_address TEXT PRIMARY KEY, first_payment_at TEXT, last_payment_at TEXT, total_payments INTEGER</pre></div>
+
+      <h3>Indexes (30+)</h3>
+      <p>Composite indexes optimized for: user lookups, session validation, lobby status queries, leaderboard (wins DESC, earnings DESC), match history (user + date), time-filtered stats (monthly/weekly).</p>
+    </section>
+
+    <!-- Section 9: Resilience -->
+    <section id="resilience" class="docs-section">
+      <h2><span class="section-number">9</span> Resilience & Error Handling</h2>
+
+      <h3>Database Resilience</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Deferred Operation Queue</h4>
+          <div class="spec-item"><span class="spec-label">Max Queue Size</span><span class="spec-value">100 items</span></div>
+          <div class="spec-item"><span class="spec-label">Process Interval</span><span class="spec-value">5 seconds</span></div>
+          <div class="spec-item"><span class="spec-label">Trigger</span><span class="spec-value">BUSY errors</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Error Classification</h4>
+          <div class="spec-item"><span class="spec-label">CONNECTION</span><span class="spec-value">DB unreachable</span></div>
+          <div class="spec-item"><span class="spec-label">CONSTRAINT</span><span class="spec-value">Unique/FK violation</span></div>
+          <div class="spec-item"><span class="spec-label">BUSY</span><span class="spec-value">Lock contention</span></div>
+          <div class="spec-item"><span class="spec-label">CORRUPT</span><span class="spec-value">Data corruption</span></div>
+        </div>
+      </div>
+
+      <div class="info-card warning">
+        <h4>Critical vs Non-Critical Operations</h4>
+        <p><strong>Critical (fail immediately):</strong> User creation, sessions, match creation, payouts<br>
+        <strong>Non-critical (queue on BUSY):</strong> Stats updates, event logging, profile changes</p>
+      </div>
+
+      <h3>Crash Recovery</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>State Persistence</h4>
+          <div class="spec-item"><span class="spec-label">Save Frequency</span><span class="spec-value">Every 5 ticks (~167ms)</span></div>
+          <div class="spec-item"><span class="spec-label">State Version</span><span class="spec-value">v1</span></div>
+          <div class="spec-item"><span class="spec-label">Max State Age</span><span class="spec-value">5 minutes</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Recovery Behavior</h4>
+          <div class="spec-item"><span class="spec-label">On Startup</span><span class="spec-value">Check interrupted matches</span></div>
+          <div class="spec-item"><span class="spec-label">Stale State</span><span class="spec-value">Void + refund all</span></div>
+          <div class="spec-item"><span class="spec-label">Fresh State</span><span class="spec-value">Void + refund all</span></div>
+        </div>
+      </div>
+
+      <h3>RPC Fallback System</h3>
+      <div class="code-block">
+        <pre><span class="comment">// RPC provider priority order:</span>
+<span class="number">1</span>. Primary: BASE_RPC_URL (Alchemy/Infura)
+<span class="number">2</span>. Fallback: base.publicnode.com
+<span class="number">3</span>. Fallback: 1rpc.io/base
+<span class="number">4</span>. Fallback: mainnet.base.org
+
+<span class="comment">// Health checks every 60 seconds</span>
+<span class="comment">// Tests: block number retrieval + latency</span>
+<span class="comment">// Auto-failover on provider failure</span></pre>
+      </div>
+
+      <h3>Payment Error Handling</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Error Type</th><th>Action</th><th>Examples</th></tr></thead>
+          <tbody>
+            <tr><td>Transient</td><td>Retry (3x, exponential backoff)</td><td>ETIMEDOUT, ECONNRESET, 429, 502-504</td></tr>
+            <tr><td>Permanent</td><td>Fail immediately, alert</td><td>Insufficient funds, nonce too low, execution reverted</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Game Loop Health Monitoring</h3>
+      <ul>
+        <li>Health checks every 2 seconds</li>
+        <li>Max staleness: 2 seconds (60 ticks at 30Hz)</li>
+        <li>Consecutive error tracking per match</li>
+        <li>Automatic void on unrecoverable errors</li>
+      </ul>
+    </section>
+
+    <!-- Section 10: Blockchain -->
+    <section id="blockchain" class="docs-section">
+      <h2><span class="section-number">10</span> Blockchain Integration</h2>
+
+      <h3>Network Configuration</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Base Network</h4>
+          <div class="spec-item"><span class="spec-label">Chain ID</span><span class="spec-value">8453</span></div>
+          <div class="spec-item"><span class="spec-label">Block Time</span><span class="spec-value">~2 seconds</span></div>
+          <div class="spec-item"><span class="spec-label">Confirmations</span><span class="spec-value">3 blocks</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>USDC Token</h4>
+          <div class="spec-item"><span class="spec-label">Contract</span><span class="spec-value" style="font-size: 11px;">0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913</span></div>
+          <div class="spec-item"><span class="spec-label">Decimals</span><span class="spec-value">6</span></div>
+          <div class="spec-item"><span class="spec-label">Standard</span><span class="spec-value">ERC-20</span></div>
+        </div>
+      </div>
+
+      <h3>Wallet Architecture</h3>
+      <div class="code-block">
+        <pre><span class="comment">// BIP-44 derivation path</span>
+<span class="keyword">const</span> path = <span class="string">"m/44'/60'/0'/0/{index}"</span>;
+
+<span class="comment">// Treasury wallet: index 0 (from TREASURY_MNEMONIC)</span>
+<span class="comment">// Lobby wallets: indices 1-12 (from LOBBY_WALLET_SEED)</span>
+
+<span class="comment">// Private key encryption: AES-256-GCM</span>
+<span class="comment">// Format: iv:authTag:ciphertext (hex-encoded)</span></pre>
+      </div>
+
+      <h3>Payment Verification</h3>
+      <ul>
+        <li>Transaction confirmed with 3+ blocks</li>
+        <li>Transaction age less than 1 hour</li>
+        <li>Recipient matches lobby deposit address</li>
+        <li>Amount exactly equals 1,000,000 (1 USDC)</li>
+        <li>Token contract matches USDC address</li>
+        <li>Transaction hash not previously used</li>
+      </ul>
+
+      <h3>Wallet Sweeping</h3>
+      <p>After match completion, lobby wallets are swept to treasury:</p>
+      <ul>
+        <li>Recovers leftover USDC from deposits</li>
+        <li>Recovers ETH for gas replenishment</li>
+        <li>Triggered after winner payout</li>
+        <li>Maintains treasury balance for future payouts</li>
+      </ul>
+
+      <h3>Low Balance Alerts</h3>
+      <p>Discord alerts triggered when wallet ETH balance falls below <strong>0.001 ETH</strong>.</p>
+    </section>
+
+    <!-- Section 11: Authentication -->
+    <section id="authentication" class="docs-section">
+      <h2><span class="section-number">11</span> Authentication System</h2>
+
+      <h3>SIWE (Sign-In with Ethereum)</h3>
+      <div class="flow-diagram">
+        <div class="flow-steps">
+          <div class="flow-step">Request Nonce</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Generate SIWE Message</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Sign with Wallet</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Verify Signature</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step highlight">Session Created</div>
+        </div>
+      </div>
+
+      <h3>Session Management</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Session Token</h4>
+          <div class="spec-item"><span class="spec-label">Format</span><span class="spec-value">64-char hex</span></div>
+          <div class="spec-item"><span class="spec-label">Generation</span><span class="spec-value">crypto.randomBytes(32)</span></div>
+          <div class="spec-item"><span class="spec-label">Storage</span><span class="spec-value">localStorage</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Token Lifecycle</h4>
+          <div class="spec-item"><span class="spec-label">Expiry</span><span class="spec-value">24 hours</span></div>
+          <div class="spec-item"><span class="spec-label">Rotation</span><span class="spec-value">On reconnect</span></div>
+          <div class="spec-item"><span class="spec-label">Cleanup</span><span class="spec-value">Hourly</span></div>
+        </div>
+      </div>
+
+      <div class="info-card success">
+        <h4>Token Rotation Security</h4>
+        <p>Session tokens are rotated on every WebSocket reconnection. Old tokens are immediately invalidated, preventing replay attacks during the reconnection grace period.</p>
+      </div>
+
+      <h3>Wallet Support (EIP-6963)</h3>
+      <p>Multi-wallet detection supporting: MetaMask, Rabby, Coinbase Wallet, Trust Wallet, and any EIP-6963 compatible wallet. Fallback to <code>window.ethereum</code> for legacy support.</p>
+    </section>
+
+    <!-- Section 12: Profiles -->
+    <section id="profiles" class="docs-section">
+      <h2><span class="section-number">12</span> Player Profiles</h2>
+
+      <h3>Profile Features</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Username</h4>
+          <div class="spec-item"><span class="spec-label">Length</span><span class="spec-value">3-20 characters</span></div>
+          <div class="spec-item"><span class="spec-label">Characters</span><span class="spec-value">a-z, A-Z, 0-9, _</span></div>
+          <div class="spec-item"><span class="spec-label">Requirement</span><span class="spec-value">1+ completed match</span></div>
+          <div class="spec-item"><span class="spec-label">Reservation</span><span class="spec-value">Permanent</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Profile Photo</h4>
+          <div class="spec-item"><span class="spec-label">Format</span><span class="spec-value">Base64 data URL</span></div>
+          <div class="spec-item"><span class="spec-label">Max Size</span><span class="spec-value">500 KB</span></div>
+          <div class="spec-item"><span class="spec-label">Default</span><span class="spec-value">Generated avatar</span></div>
+          <div class="spec-item"><span class="spec-label">Requirement</span><span class="spec-value">1+ completed match</span></div>
+        </div>
+      </div>
+
+      <h3>Statistics Tracked</h3>
+      <ul>
+        <li>Total matches, wins, losses</li>
+        <li>Win rate (calculated: wins / total_matches * 100)</li>
+        <li>Current win streak, best win streak</li>
+        <li>Total earnings (USDC), total spent (USDC)</li>
+        <li>Net profit (earnings - spent)</li>
+        <li>First match date, last match date</li>
+      </ul>
+
+      <h3>Leaderboards</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Filter</th><th>Time Range</th><th>Sort Order</th></tr></thead>
+          <tbody>
+            <tr><td>All Time</td><td>All matches ever</td><td>Wins DESC, Earnings DESC</td></tr>
+            <tr><td>Monthly</td><td>Current calendar month</td><td>Wins DESC, Earnings DESC</td></tr>
+            <tr><td>Weekly</td><td>Since last Monday</td><td>Wins DESC, Earnings DESC</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 13: Security -->
+    <section id="security" class="docs-section">
+      <h2><span class="section-number">13</span> Security Architecture</h2>
+
+      <h3>Security Layers</h3>
+      <div class="security-grid">
+        <div class="security-item">
+          <h4>Input Validation</h4>
+          <p>All WebSocket messages validated against strict JSON schemas. Whitelist of allowed message types. Coordinate bounds checking. Direction validation (-1, 0, 1 only). Input sequence tracking for anti-cheat.</p>
+        </div>
+        <div class="security-item">
+          <h4>Rate Limiting</h4>
+          <p>INPUT: 120/sec. Other: 10/sec. Connections: 3/IP. Message size: 16KB. Per-IP tracking with 1-hour cleanup to prevent memory leaks.</p>
+        </div>
+        <div class="security-item">
+          <h4>Wallet Security</h4>
+          <p>Private keys encrypted at rest (AES-256-GCM). Deterministic HD derivation (BIP-44). No plaintext keys in logs or errors. Signature verification via SIWE.</p>
+        </div>
+        <div class="security-item">
+          <h4>Session Security</h4>
+          <p>Cryptographically random 64-char tokens. Expiration enforcement. Per-user isolation. Token rotation on reconnect prevents replay attacks.</p>
+        </div>
+        <div class="security-item">
+          <h4>Blockchain Security</h4>
+          <p>3-block confirmations. Exact amount verification. Hardcoded contract addresses. Nonce management via ethers.js. Gas estimation with buffers.</p>
+        </div>
+        <div class="security-item">
+          <h4>Sentry Integration</h4>
+          <p>Scrubs sensitive data (mnemonics, keys). 5% sampling in production. Ignores non-critical errors (WebSocket closes, rate limits). Breadcrumb tracking for debugging.</p>
+        </div>
+      </div>
+
+      <h3>Validation Patterns</h3>
+      <div class="code-block">
+        <pre><span class="comment">// Transaction hash validation</span>
+<span class="keyword">const</span> TX_HASH_REGEX = <span class="string">/^0x[a-fA-F0-9]{64}$/</span>;
+
+<span class="comment">// Admin/bot tx patterns (port 3001 only)</span>
+<span class="keyword">const</span> ADMIN_TX_REGEX = <span class="string">/^0x(dev_|bot_tx_)[a-zA-Z0-9_]+$/</span>;
+
+<span class="comment">// Username validation</span>
+<span class="keyword">const</span> USERNAME_REGEX = <span class="string">/^[a-zA-Z0-9_]{3,20}$/</span>;
+
+<span class="comment">// Wallet address validation (EIP-55 checksummed)</span>
+ethers.isAddress(address);</pre>
+      </div>
+    </section>
+
+    <!-- Section 14: Bot System -->
+    <section id="bots" class="docs-section">
+      <h2><span class="section-number">14</span> Bot System (Admin Only)</h2>
+
+      <div class="info-card warning">
+        <h4>Admin Port Only</h4>
+        <p>Bot features are only available on port 3001. They are intended for testing and development, not production gameplay.</p>
+      </div>
+
+      <h3>Bot Features</h3>
+      <ul>
+        <li>Created with fake wallet addresses: <code>0xbot{counter}</code></li>
+        <li>Unique fake tx hashes: <code>0xbot_tx_{timestamp}_{userId}</code></li>
+        <li>AI movement targeting enemies and hearts</li>
+        <li>Full match participation</li>
+        <li>Marked as <code>isBot: true</code> in state</li>
+      </ul>
+
+      <h3>Bot Movement AI</h3>
+      <div class="code-block">
+        <pre><span class="comment">// Bot targeting logic</span>
+<span class="keyword">if</span> (showdownMode) {
+  target = nearestUncapturedHeart;
+} <span class="keyword">else</span> {
+  target = enemyThatBotCanBeat;
+}
+moveTowardTarget(bot, target);</pre>
+      </div>
+    </section>
+
+    <!-- Section 15: Client Architecture -->
+    <section id="client" class="docs-section">
+      <h2><span class="section-number">15</span> Client Architecture</h2>
+
+      <h3>Module Structure</h3>
+      <div class="specs-grid">
+        <div class="spec-card"><h4>main.js</h4><p style="color: var(--text-secondary); font-size: 14px;">App initialization, module orchestration, global state.</p></div>
+        <div class="spec-card"><h4>network.js</h4><p style="color: var(--text-secondary); font-size: 14px;">WebSocket client, message handling, jittered exponential backoff reconnection.</p></div>
+        <div class="spec-card"><h4>wallet.js</h4><p style="color: var(--text-secondary); font-size: 14px;">EIP-6963 multi-wallet detection, connection, signing, fallback to window.ethereum.</p></div>
+        <div class="spec-card"><h4>ui.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Screen management (7 screens), modals, DOM updates, tab navigation.</p></div>
+        <div class="spec-card"><h4>renderer.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Canvas 2D rendering, player tokens with role colors, hearts, arena grid, role icons.</p></div>
+        <div class="spec-card"><h4>input.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Keyboard event tracking (WASD + Arrows), sequence numbers for anti-cheat.</p></div>
+        <div class="spec-card"><h4>interpolation.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Linear position interpolation between server snapshots for smooth 60fps rendering.</p></div>
+        <div class="spec-card"><h4>confetti.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Victory celebration particle animation system.</p></div>
+      </div>
+
+      <h3>Screen States</h3>
+      <div class="flow-diagram">
+        <div class="flow-steps" style="flex-direction: column; gap: 8px;">
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+            <div class="flow-step">Landing</div>
+            <div class="flow-arrow">&#8594;</div>
+            <div class="flow-step">Lobby Browser</div>
+            <div class="flow-arrow">&#8594;</div>
+            <div class="flow-step">Waiting Room</div>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+            <div class="flow-step">Role Reveal (10s)</div>
+            <div class="flow-arrow">&#8594;</div>
+            <div class="flow-step">Preview (3s)</div>
+            <div class="flow-arrow">&#8594;</div>
+            <div class="flow-step highlight">Game</div>
+            <div class="flow-arrow">&#8594;</div>
+            <div class="flow-step">Results</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Player Rendering</h3>
+      <ul>
+        <li><strong>Shape:</strong> Circle with role-specific color and border</li>
+        <li><strong>Colors:</strong> Rock = Orange (#FFA500), Paper = Blue (#1E90FF), Scissors = Green (#2ECC71)</li>
+        <li><strong>Size:</strong> 22px radius</li>
+        <li><strong>Effects:</strong> Glow for local player, fade + indicator for disconnected players</li>
+        <li><strong>Labels:</strong> Username rendered above player circle</li>
+        <li><strong>Preview Phase:</strong> Pulsing highlight effect during 3-second preview</li>
+      </ul>
+    </section>
+
+    <!-- Section 16: Testing -->
+    <section id="testing" class="docs-section">
+      <h2><span class="section-number">16</span> Testing Infrastructure</h2>
+
+      <h3>Test Suites</h3>
+      <div class="file-tree">
+        <span class="folder">tests/</span><br>
+        ├── <span class="folder">security/</span> <span class="comment"># Security vulnerability tests</span><br>
+        │   └── <span class="file">security-tests.js</span> <span class="comment"># Rate limiting, input validation, etc.</span><br>
+        ├── <span class="folder">load/</span> <span class="comment"># Load and performance testing</span><br>
+        │   └── <span class="file">load-test.js</span> <span class="comment"># Concurrent connections, message throughput</span><br>
+        ├── <span class="folder">e2e/</span> <span class="comment"># End-to-end game flow tests</span><br>
+        │   └── <span class="file">full-game-flow.js</span> <span class="comment"># Complete match lifecycle with bots</span><br>
+        └── <span class="folder">manual/</span> <span class="comment"># Manual testing guides</span><br>
+            └── <span class="file">TESTING_CHECKLIST.md</span> <span class="comment"># QA checklist</span>
+      </div>
+
+      <h3>npm Scripts</h3>
+      <div class="code-block">
+        <pre>npm start              <span class="comment"># Production server</span>
+npm run dev            <span class="comment"># Development with nodemon</span>
+npm run init-db        <span class="comment"># Manual database initialization</span>
+npm run test:security  <span class="comment"># Security tests (--production flag available)</span>
+npm run test:load      <span class="comment"># Load testing</span>
+npm run test:e2e       <span class="comment"># End-to-end testing</span></pre>
+      </div>
+    </section>
+
+    <!-- Section 17: Deployment -->
+    <section id="deployment" class="docs-section">
+      <h2><span class="section-number">17</span> Deployment Guide</h2>
+
+      <h3>Railway Configuration</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Build (nixpacks.toml)</h4>
+          <div class="spec-item"><span class="spec-label">Providers</span><span class="spec-value">Node.js</span></div>
+          <div class="spec-item"><span class="spec-label">Packages</span><span class="spec-value">Python, GCC</span></div>
+          <div class="spec-item"><span class="spec-label">Native Modules</span><span class="spec-value">better-sqlite3</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Deploy (railway.json)</h4>
+          <div class="spec-item"><span class="spec-label">Health Check</span><span class="spec-value">/api/health</span></div>
+          <div class="spec-item"><span class="spec-label">Timeout</span><span class="spec-value">30 seconds</span></div>
+          <div class="spec-item"><span class="spec-label">Restart Policy</span><span class="spec-value">ON_FAILURE (3x)</span></div>
+        </div>
+      </div>
+
+      <h3>Health Check Response</h3>
+      <div class="code-block">
+        <pre>{
+  <span class="string">"status"</span>: <span class="string">"healthy"</span>,
+  <span class="string">"database"</span>: { <span class="string">"connected"</span>: <span class="keyword">true</span>, <span class="string">"journalMode"</span>: <span class="string">"wal"</span> },
+  <span class="string">"deferredQueue"</span>: { <span class="string">"size"</span>: <span class="number">0</span> },
+  <span class="string">"gameLoop"</span>: { <span class="string">"healthy"</span>: <span class="keyword">true</span>, <span class="string">"activeMatches"</span>: <span class="number">2</span> }
+}</pre>
+      </div>
+
+      <h3>Graceful Shutdown</h3>
+      <ol>
+        <li>Stop accepting new connections</li>
+        <li>Close existing WebSocket connections with code 1001</li>
+        <li>Flush Sentry events (2s timeout)</li>
+        <li>Close database connection</li>
+        <li>Exit with code 0</li>
+      </ol>
+
+      <h3>Monitoring</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Discord Webhooks</h4>
+          <div class="spec-item"><span class="spec-label">Critical</span><span class="spec-value">Errors, failures, low balance</span></div>
+          <div class="spec-item"><span class="spec-label">Activity</span><span class="spec-value">Matches, joins, completions</span></div>
+          <div class="spec-item"><span class="spec-label">Retry</span><span class="spec-value">3x with exponential backoff</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Sentry</h4>
+          <div class="spec-item"><span class="spec-label">Errors</span><span class="spec-value">Uncaught exceptions</span></div>
+          <div class="spec-item"><span class="spec-label">Performance</span><span class="spec-value">5% sampling</span></div>
+          <div class="spec-item"><span class="spec-label">Scrubbing</span><span class="spec-value">Keys, mnemonics</span></div>
+        </div>
+      </div>
+
+      <h3>Backup System</h3>
+      <ul>
+        <li>Automated hourly backups (configurable)</li>
+        <li>WAL checkpoint before each backup</li>
+        <li>Integrity verification via <code>PRAGMA integrity_check</code></li>
+        <li>Retain last 24 backups (configurable)</li>
+        <li>Stored in <code>./backups/</code> directory</li>
+      </ul>
+    </section>
+
+    <!-- Section 18: Configuration -->
+    <section id="configuration" class="docs-section">
+      <h2><span class="section-number">18</span> Configuration Reference</h2>
+
+      <h3>Required Environment Variables</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>PORT</code></td><td>HTTP server port (Railway sets this)</td></tr>
+            <tr><td><code>ADMIN_PORT</code></td><td>Admin/testing server port (default: 3001)</td></tr>
+            <tr><td><code>NODE_ENV</code></td><td>Environment mode (production/development)</td></tr>
+            <tr><td><code>DATABASE_PATH</code></td><td>SQLite file path</td></tr>
+            <tr><td><code>BASE_RPC_URL</code></td><td>Primary RPC endpoint (Alchemy/Infura)</td></tr>
+            <tr><td><code>CHAIN_ID</code></td><td>Blockchain network ID (8453 for Base)</td></tr>
+            <tr><td><code>USDC_CONTRACT_ADDRESS</code></td><td>USDC token contract address</td></tr>
+            <tr><td><code>TREASURY_MNEMONIC</code></td><td>Treasury wallet 12-word seed phrase</td></tr>
+            <tr><td><code>LOBBY_WALLET_SEED</code></td><td>Lobby wallets 12-word seed phrase</td></tr>
+            <tr><td><code>WALLET_ENCRYPTION_KEY</code></td><td>32-byte hex key for AES-256</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Optional Environment Variables</h3>
+      <div class="table-container">
+        <table class="docs-table">
+          <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>SESSION_EXPIRY_HOURS</code></td><td>24</td><td>Session token expiration</td></tr>
+            <tr><td><code>GAME_TICK_RATE</code></td><td>30</td><td>Physics ticks per second</td></tr>
+            <tr><td><code>GAME_ARENA_WIDTH</code></td><td>1600</td><td>Arena width in pixels</td></tr>
+            <tr><td><code>GAME_ARENA_HEIGHT</code></td><td>900</td><td>Arena height in pixels</td></tr>
+            <tr><td><code>GAME_MAX_SPEED</code></td><td>450</td><td>Max player speed (px/sec)</td></tr>
+            <tr><td><code>GAME_PLAYER_RADIUS</code></td><td>22</td><td>Player collision radius</td></tr>
+            <tr><td><code>COUNTDOWN_DURATION</code></td><td>10</td><td>Role reveal countdown (seconds)</td></tr>
+            <tr><td><code>BUY_IN_AMOUNT</code></td><td>1000000</td><td>Entry fee (micro-USDC)</td></tr>
+            <tr><td><code>WINNER_PAYOUT</code></td><td>2400000</td><td>Winner payout (micro-USDC)</td></tr>
+            <tr><td><code>TREASURY_CUT</code></td><td>600000</td><td>Platform fee (micro-USDC)</td></tr>
+            <tr><td><code>RATE_LIMIT_INPUT</code></td><td>120</td><td>INPUT messages per second</td></tr>
+            <tr><td><code>RATE_LIMIT_OTHER</code></td><td>10</td><td>Other messages per second</td></tr>
+            <tr><td><code>MAX_CONNECTIONS_PER_IP</code></td><td>3</td><td>Concurrent connections per IP</td></tr>
+            <tr><td><code>RECONNECT_GRACE_PERIOD</code></td><td>30</td><td>Disconnect grace period (seconds)</td></tr>
+            <tr><td><code>DISCORD_WEBHOOK_URL</code></td><td>-</td><td>Critical alerts webhook</td></tr>
+            <tr><td><code>DISCORD_ACTIVITY_WEBHOOK_URL</code></td><td>-</td><td>Activity logs webhook</td></tr>
+            <tr><td><code>SENTRY_DSN</code></td><td>-</td><td>Sentry error tracking DSN</td></tr>
+            <tr><td><code>LOG_LEVEL</code></td><td>info</td><td>Winston log level</td></tr>
+            <tr><td><code>BACKUP_INTERVAL_HOURS</code></td><td>1</td><td>Backup frequency</td></tr>
+            <tr><td><code>BACKUP_KEEP_COUNT</code></td><td>24</td><td>Backups to retain</td></tr>
+            <tr><td><code>DEBUG_PHYSICS</code></td><td>false</td><td>Physics debug logging</td></tr>
+            <tr><td><code>DEBUG_MATCH</code></td><td>false</td><td>Match debug logging</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer style="margin-top: 80px; padding: 40px 0; border-top: 1px solid rgba(255,255,255,0.1); text-align: center;">
+      <p style="color: var(--text-secondary); font-size: 14px;">
+        RPS Arena Technical Documentation v2.0<br>
+        Built with Node.js, WebSocket, SQLite, and Base Network
+      </p>
+      <p style="color: var(--text-secondary); font-size: 12px; margin-top: 16px;">
+        <a href="index.html" style="color: var(--accent); text-decoration: none;">Play RPS Arena</a>
+      </p>
+    </footer>
+  </div>
+</body>
+</html>

@@ -132,8 +132,16 @@ const UI = (function () {
 
     // Tab navigation
     document.getElementById('nav-lobbies').addEventListener('click', () => showTab('lobbies'));
+    document.getElementById('nav-how-to-play').addEventListener('click', () => showTab('how-to-play'));
     document.getElementById('nav-leaderboard').addEventListener('click', () => showTab('leaderboard'));
     document.getElementById('nav-profile').addEventListener('click', () => showTab('profile'));
+
+    // How to Play modal (landing page)
+    document.getElementById('how-to-play-btn').addEventListener('click', showHowToPlayModal);
+    document.getElementById('close-how-to-play-btn').addEventListener('click', hideHowToPlayModal);
+    document.getElementById('how-to-play-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'how-to-play-modal') hideHowToPlayModal();
+    });
 
     // Profile actions
     document.getElementById('edit-username-btn').addEventListener('click', showUsernameModal);
@@ -1231,6 +1239,18 @@ Expiration Time: ${expirationTime}`;
 
   function hideUsernameModal() {
     document.getElementById('username-modal').classList.add('hidden');
+  }
+
+  // ============================================
+  // How to Play Modal
+  // ============================================
+
+  function showHowToPlayModal() {
+    document.getElementById('how-to-play-modal').classList.remove('hidden');
+  }
+
+  function hideHowToPlayModal() {
+    document.getElementById('how-to-play-modal').classList.add('hidden');
   }
 
   async function handleSaveUsername() {

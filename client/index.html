@@ -23,7 +23,9 @@
       <h1 class="logo">RPS ARENA</h1>
       <p class="tagline">Eliminate. Collect. Win.</p>
       <button id="connect-wallet-btn" class="btn btn-primary">Connect Wallet</button>
+      <button id="how-to-play-btn" class="btn btn-secondary how-to-play-landing-btn">How to Play</button>
       <p class="network-info">Powered by Base</p>
+      <a href="docs.html" class="docs-link">Technical Documentation</a>
     </div>
   </div>
 
@@ -35,6 +37,7 @@
       <h2>RPS ARENA</h2>
       <nav class="nav-tabs">
         <button id="nav-lobbies" class="nav-tab active">Lobbies</button>
+        <button id="nav-how-to-play" class="nav-tab">How to Play</button>
         <button id="nav-leaderboard" class="nav-tab">Leaderboard</button>
         <button id="nav-profile" class="nav-tab">Profile</button>
       </nav>
@@ -52,6 +55,315 @@
           <!-- Lobbies populated by JS -->
         </div>
         <div class="ping-display">Ping: <span id="ping-value">--</span>ms</div>
+      </div>
+    </div>
+
+    <!-- How to Play Tab Content -->
+    <div id="how-to-play-tab" class="tab-content hidden">
+      <div class="how-to-play-content">
+        <h3>How to Play</h3>
+
+        <!-- Quick Start -->
+        <section class="guide-section">
+          <h4>Quick Start</h4>
+          <div class="quick-start-steps">
+            <div class="quick-step">
+              <span class="step-number">1</span>
+              <span class="step-text">Connect your wallet and pay 1 USDC to join a lobby</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">2</span>
+              <span class="step-text">Wait for 3 players, then learn your role (Rock, Paper, or Scissors)</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">3</span>
+              <span class="step-text">Move with WASD or Arrow Keys to chase or flee from opponents</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">4</span>
+              <span class="step-text">Eliminate opponents or collect hearts in Showdown to win 2.4 USDC</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Movement Controls -->
+        <section class="guide-section">
+          <h4>Movement Controls</h4>
+          <div class="controls-grid">
+            <div class="control-option">
+              <div class="key-group">
+                <span class="key">W</span>
+                <div class="key-row">
+                  <span class="key">A</span>
+                  <span class="key">S</span>
+                  <span class="key">D</span>
+                </div>
+              </div>
+              <span class="control-label">WASD Keys</span>
+            </div>
+            <div class="control-divider">or</div>
+            <div class="control-option">
+              <div class="key-group">
+                <span class="key arrow-key">↑</span>
+                <div class="key-row">
+                  <span class="key arrow-key">←</span>
+                  <span class="key arrow-key">↓</span>
+                  <span class="key arrow-key">→</span>
+                </div>
+              </div>
+              <span class="control-label">Arrow Keys</span>
+            </div>
+          </div>
+          <ul class="guide-list">
+            <li>Move in any direction including diagonals</li>
+            <li>All players move at the same speed</li>
+            <li>You cannot leave the arena boundaries</li>
+          </ul>
+        </section>
+
+        <!-- Rock Paper Scissors Rules -->
+        <section class="guide-section">
+          <h4>Rock Paper Scissors Combat</h4>
+          <p class="guide-intro">Each match, you're assigned one of three roles. Players are color-coded in the arena - collide with the role you beat to eliminate them!</p>
+          <div class="rps-rules">
+            <div class="rps-rule">
+              <div class="rps-matchup">
+                <span class="role-badge rock">Rock (Orange)</span>
+                <span class="beats-arrow">beats</span>
+                <span class="role-badge scissors">Scissors (Green)</span>
+              </div>
+            </div>
+            <div class="rps-rule">
+              <div class="rps-matchup">
+                <span class="role-badge scissors">Scissors (Green)</span>
+                <span class="beats-arrow">beats</span>
+                <span class="role-badge paper">Paper (Blue)</span>
+              </div>
+            </div>
+            <div class="rps-rule">
+              <div class="rps-matchup">
+                <span class="role-badge paper">Paper (Blue)</span>
+                <span class="beats-arrow">beats</span>
+                <span class="role-badge rock">Rock (Orange)</span>
+              </div>
+            </div>
+          </div>
+          <div class="combat-tips">
+            <div class="tip">
+              <span class="tip-icon attack">⚔</span>
+              <span><strong>Attack</strong> the role you beat for an instant elimination</span>
+            </div>
+            <div class="tip">
+              <span class="tip-icon avoid">🛡</span>
+              <span><strong>Avoid</strong> the role that beats you or you'll be eliminated</span>
+            </div>
+            <div class="tip">
+              <span class="tip-icon neutral">↔</span>
+              <span><strong>Same roles</strong> bounce off each other harmlessly</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Showdown Mode -->
+        <section class="guide-section showdown-section">
+          <h4>Showdown Mode</h4>
+          <div class="showdown-badge">Final 2 Players</div>
+          <p class="guide-intro">When only 2 players remain, the game transitions to Showdown Mode!</p>
+          <div class="showdown-details">
+            <div class="showdown-step">
+              <span class="showdown-icon">⏸</span>
+              <div>
+                <strong>3-Second Freeze</strong>
+                <p>Both players freeze while "SHOWDOWN" appears on screen</p>
+              </div>
+            </div>
+            <div class="showdown-step">
+              <span class="showdown-icon">💗</span>
+              <div>
+                <strong>Hearts Spawn</strong>
+                <p>3 hearts appear at random positions in the arena</p>
+              </div>
+            </div>
+            <div class="showdown-step">
+              <span class="showdown-icon">🏃</span>
+              <div>
+                <strong>Race to Collect</strong>
+                <p>Run into hearts to collect them - first player to collect <strong>2 hearts</strong> wins!</p>
+              </div>
+            </div>
+          </div>
+          <div class="showdown-note">
+            <strong>Note:</strong> In Showdown Mode, collisions between players only cause a bounce - no eliminations!
+          </div>
+        </section>
+
+        <!-- Game Objectives -->
+        <section class="guide-section">
+          <h4>How to Win</h4>
+          <div class="win-conditions">
+            <div class="win-condition">
+              <div class="win-header">
+                <span class="win-icon">👑</span>
+                <span class="win-title">Standard Victory</span>
+              </div>
+              <p>Be the last player standing by eliminating both opponents using Rock-Paper-Scissors collisions</p>
+            </div>
+            <div class="win-condition">
+              <div class="win-header">
+                <span class="win-icon">💗</span>
+                <span class="win-title">Showdown Victory</span>
+              </div>
+              <p>If 2 players remain, be the first to collect 2 of the 3 hearts that spawn in the arena</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Match Flow -->
+        <section class="guide-section">
+          <h4>Match Flow</h4>
+          <div class="match-flow">
+            <div class="flow-step">
+              <div class="flow-number">1</div>
+              <div class="flow-content">
+                <strong>Join a Lobby</strong>
+                <p>Pay 1 USDC to enter. Wait for 3 players total.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">2</div>
+              <div class="flow-content">
+                <strong>10-Second Countdown</strong>
+                <p>Learn your role and see who to attack/avoid.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">3</div>
+              <div class="flow-content">
+                <strong>3-Second Preview</strong>
+                <p>See player positions before the action begins.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">4</div>
+              <div class="flow-content">
+                <strong>Battle Phase</strong>
+                <p>Chase your target, flee from your threat!</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">5</div>
+              <div class="flow-content">
+                <strong>Showdown / Victory</strong>
+                <p>Eliminate all or race for hearts to win!</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Economy -->
+        <section class="guide-section">
+          <h4>Entry Fee & Prizes</h4>
+          <div class="economy-table">
+            <div class="economy-row">
+              <span class="economy-label">Entry Fee</span>
+              <span class="economy-value">1 USDC</span>
+            </div>
+            <div class="economy-row">
+              <span class="economy-label">Prize Pool</span>
+              <span class="economy-value">3 USDC (from 3 players)</span>
+            </div>
+            <div class="economy-row highlight">
+              <span class="economy-label">Winner Payout</span>
+              <span class="economy-value success">2.4 USDC</span>
+            </div>
+            <div class="economy-row">
+              <span class="economy-label">Platform Fee</span>
+              <span class="economy-value">0.6 USDC (20%)</span>
+            </div>
+          </div>
+          <p class="economy-note">If a lobby doesn't fill within 30 minutes, you can request a full refund of your 1 USDC.</p>
+        </section>
+
+        <!-- Tips & Strategy -->
+        <section class="guide-section">
+          <h4>Tips & Strategy</h4>
+          <div class="tips-grid">
+            <div class="strategy-tip">
+              <span class="strategy-icon">🎯</span>
+              <div>
+                <strong>Know Your Matchups</strong>
+                <p>During the countdown, memorize who you beat and who beats you.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">🔄</span>
+              <div>
+                <strong>Use Same-Role Bounces</strong>
+                <p>Bouncing off a same-role player can help you escape danger.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">⏱</span>
+              <div>
+                <strong>Be Patient</strong>
+                <p>Sometimes waiting for the right moment is better than rushing in.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">👀</span>
+              <div>
+                <strong>Watch All Players</strong>
+                <p>Track your threat's position even while chasing your target.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">💗</span>
+              <div>
+                <strong>Showdown Positioning</strong>
+                <p>In Showdown, position yourself near multiple hearts at once.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">🚫</span>
+              <div>
+                <strong>Don't Disconnect</strong>
+                <p>Stay connected! Disconnecting for 30+ seconds eliminates you.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- FAQ -->
+        <section class="guide-section">
+          <h4>Frequently Asked Questions</h4>
+          <div class="faq-list">
+            <div class="faq-item">
+              <div class="faq-question">What happens if two players of the same role collide?</div>
+              <div class="faq-answer">They bounce off each other. No one is eliminated - only different roles can eliminate each other.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">Can I get a refund if I join a lobby?</div>
+              <div class="faq-answer">Yes, but only if the match doesn't start within 30 minutes. Once a match begins, there are no refunds.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">What if I disconnect during a match?</div>
+              <div class="faq-answer">You have 30 seconds to reconnect. If you don't return in time, you'll be automatically eliminated.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">How are roles assigned?</div>
+              <div class="faq-answer">Roles are randomly assigned at the start of each match. Everyone has an equal chance of being Rock, Paper, or Scissors.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">Is there a maximum number of matches I can play?</div>
+              <div class="faq-answer">No! Play as many matches as you want. Just join any available lobby.</div>
+            </div>
+          </div>
+        </section>
+
       </div>
     </div>
 
@@ -243,8 +555,332 @@
     </div>
   </div>
 
+  <!-- How to Play Modal -->
+  <div id="how-to-play-modal" class="modal hidden">
+    <div class="modal-content how-to-play-modal-content">
+      <button id="close-how-to-play-btn" class="modal-close-btn">&times;</button>
+      <div class="how-to-play-modal-scroll">
+        <h3>How to Play</h3>
+
+        <!-- Quick Start -->
+        <section class="guide-section">
+          <h4>Quick Start</h4>
+          <div class="quick-start-steps">
+            <div class="quick-step">
+              <span class="step-number">1</span>
+              <span class="step-text">Connect your wallet and pay 1 USDC to join a lobby</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">2</span>
+              <span class="step-text">Wait for 3 players, then learn your role (Rock, Paper, or Scissors)</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">3</span>
+              <span class="step-text">Move with WASD or Arrow Keys to chase or flee from opponents</span>
+            </div>
+            <div class="quick-step">
+              <span class="step-number">4</span>
+              <span class="step-text">Eliminate opponents or collect hearts in Showdown to win 2.4 USDC</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Movement Controls -->
+        <section class="guide-section">
+          <h4>Movement Controls</h4>
+          <div class="controls-grid">
+            <div class="control-option">
+              <div class="key-group">
+                <span class="key">W</span>
+                <div class="key-row">
+                  <span class="key">A</span>
+                  <span class="key">S</span>
+                  <span class="key">D</span>
+                </div>
+              </div>
+              <span class="control-label">WASD Keys</span>
+            </div>
+            <div class="control-divider">or</div>
+            <div class="control-option">
+              <div class="key-group">
+                <span class="key arrow-key">↑</span>
+                <div class="key-row">
+                  <span class="key arrow-key">←</span>
+                  <span class="key arrow-key">↓</span>
+                  <span class="key arrow-key">→</span>
+                </div>
+              </div>
+              <span class="control-label">Arrow Keys</span>
+            </div>
+          </div>
+          <ul class="guide-list">
+            <li>Move in any direction including diagonals</li>
+            <li>All players move at the same speed</li>
+            <li>You cannot leave the arena boundaries</li>
+          </ul>
+        </section>
+
+        <!-- Rock Paper Scissors Rules -->
+        <section class="guide-section">
+          <h4>Rock Paper Scissors Combat</h4>
+          <p class="guide-intro">Each match, you're assigned one of three roles. Players are color-coded in the arena - collide with the role you beat to eliminate them!</p>
+          <div class="rps-rules">
+            <div class="rps-rule">
+              <div class="rps-matchup">
+                <span class="role-badge rock">Rock (Orange)</span>
+                <span class="beats-arrow">beats</span>
+                <span class="role-badge scissors">Scissors (Green)</span>
+              </div>
+            </div>
+            <div class="rps-rule">
+              <div class="rps-matchup">
+                <span class="role-badge scissors">Scissors (Green)</span>
+                <span class="beats-arrow">beats</span>
+                <span class="role-badge paper">Paper (Blue)</span>
+              </div>
+            </div>
+            <div class="rps-rule">
+              <div class="rps-matchup">
+                <span class="role-badge paper">Paper (Blue)</span>
+                <span class="beats-arrow">beats</span>
+                <span class="role-badge rock">Rock (Orange)</span>
+              </div>
+            </div>
+          </div>
+          <div class="combat-tips">
+            <div class="tip">
+              <span class="tip-icon attack">⚔</span>
+              <span><strong>Attack</strong> the role you beat for an instant elimination</span>
+            </div>
+            <div class="tip">
+              <span class="tip-icon avoid">🛡</span>
+              <span><strong>Avoid</strong> the role that beats you or you'll be eliminated</span>
+            </div>
+            <div class="tip">
+              <span class="tip-icon neutral">↔</span>
+              <span><strong>Same roles</strong> bounce off each other harmlessly</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Showdown Mode -->
+        <section class="guide-section showdown-section">
+          <h4>Showdown Mode</h4>
+          <div class="showdown-badge">Final 2 Players</div>
+          <p class="guide-intro">When only 2 players remain, the game transitions to Showdown Mode!</p>
+          <div class="showdown-details">
+            <div class="showdown-step">
+              <span class="showdown-icon">⏸</span>
+              <div>
+                <strong>3-Second Freeze</strong>
+                <p>Both players freeze while "SHOWDOWN" appears on screen</p>
+              </div>
+            </div>
+            <div class="showdown-step">
+              <span class="showdown-icon">💗</span>
+              <div>
+                <strong>Hearts Spawn</strong>
+                <p>3 hearts appear at random positions in the arena</p>
+              </div>
+            </div>
+            <div class="showdown-step">
+              <span class="showdown-icon">🏃</span>
+              <div>
+                <strong>Race to Collect</strong>
+                <p>Run into hearts to collect them - first player to collect <strong>2 hearts</strong> wins!</p>
+              </div>
+            </div>
+          </div>
+          <div class="showdown-note">
+            <strong>Note:</strong> In Showdown Mode, collisions between players only cause a bounce - no eliminations!
+          </div>
+        </section>
+
+        <!-- Game Objectives -->
+        <section class="guide-section">
+          <h4>How to Win</h4>
+          <div class="win-conditions">
+            <div class="win-condition">
+              <div class="win-header">
+                <span class="win-icon">👑</span>
+                <span class="win-title">Standard Victory</span>
+              </div>
+              <p>Be the last player standing by eliminating both opponents using Rock-Paper-Scissors collisions</p>
+            </div>
+            <div class="win-condition">
+              <div class="win-header">
+                <span class="win-icon">💗</span>
+                <span class="win-title">Showdown Victory</span>
+              </div>
+              <p>If 2 players remain, be the first to collect 2 of the 3 hearts that spawn in the arena</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Match Flow -->
+        <section class="guide-section">
+          <h4>Match Flow</h4>
+          <div class="match-flow">
+            <div class="flow-step">
+              <div class="flow-number">1</div>
+              <div class="flow-content">
+                <strong>Join a Lobby</strong>
+                <p>Pay 1 USDC to enter. Wait for 3 players total.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">2</div>
+              <div class="flow-content">
+                <strong>10-Second Countdown</strong>
+                <p>Learn your role and see who to attack/avoid.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">3</div>
+              <div class="flow-content">
+                <strong>3-Second Preview</strong>
+                <p>See player positions before the action begins.</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">4</div>
+              <div class="flow-content">
+                <strong>Battle Phase</strong>
+                <p>Chase your target, flee from your threat!</p>
+              </div>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <div class="flow-number">5</div>
+              <div class="flow-content">
+                <strong>Showdown / Victory</strong>
+                <p>Eliminate all or race for hearts to win!</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Economy -->
+        <section class="guide-section">
+          <h4>Entry Fee & Prizes</h4>
+          <div class="economy-table">
+            <div class="economy-row">
+              <span class="economy-label">Entry Fee</span>
+              <span class="economy-value">1 USDC</span>
+            </div>
+            <div class="economy-row">
+              <span class="economy-label">Prize Pool</span>
+              <span class="economy-value">3 USDC (from 3 players)</span>
+            </div>
+            <div class="economy-row highlight">
+              <span class="economy-label">Winner Payout</span>
+              <span class="economy-value success">2.4 USDC</span>
+            </div>
+            <div class="economy-row">
+              <span class="economy-label">Platform Fee</span>
+              <span class="economy-value">0.6 USDC (20%)</span>
+            </div>
+          </div>
+          <p class="economy-note">If a lobby doesn't fill within 30 minutes, you can request a full refund of your 1 USDC.</p>
+        </section>
+
+        <!-- Tips & Strategy -->
+        <section class="guide-section">
+          <h4>Tips & Strategy</h4>
+          <div class="tips-grid">
+            <div class="strategy-tip">
+              <span class="strategy-icon">🎯</span>
+              <div>
+                <strong>Know Your Matchups</strong>
+                <p>During the countdown, memorize who you beat and who beats you.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">🔄</span>
+              <div>
+                <strong>Use Same-Role Bounces</strong>
+                <p>Bouncing off a same-role player can help you escape danger.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">⏱</span>
+              <div>
+                <strong>Be Patient</strong>
+                <p>Sometimes waiting for the right moment is better than rushing in.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">👀</span>
+              <div>
+                <strong>Watch All Players</strong>
+                <p>Track your threat's position even while chasing your target.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">💗</span>
+              <div>
+                <strong>Showdown Positioning</strong>
+                <p>In Showdown, position yourself near multiple hearts at once.</p>
+              </div>
+            </div>
+            <div class="strategy-tip">
+              <span class="strategy-icon">🚫</span>
+              <div>
+                <strong>Don't Disconnect</strong>
+                <p>Stay connected! Disconnecting for 30+ seconds eliminates you.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- FAQ -->
+        <section class="guide-section">
+          <h4>Frequently Asked Questions</h4>
+          <div class="faq-list">
+            <div class="faq-item">
+              <div class="faq-question">What happens if two players of the same role collide?</div>
+              <div class="faq-answer">They bounce off each other. No one is eliminated - only different roles can eliminate each other.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">Can I get a refund if I join a lobby?</div>
+              <div class="faq-answer">Yes, but only if the match doesn't start within 30 minutes. Once a match begins, there are no refunds.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">What if I disconnect during a match?</div>
+              <div class="faq-answer">You have 30 seconds to reconnect. If you don't return in time, you'll be automatically eliminated.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">How are roles assigned?</div>
+              <div class="faq-answer">Roles are randomly assigned at the start of each match. Everyone has an equal chance of being Rock, Paper, or Scissors.</div>
+            </div>
+            <div class="faq-item">
+              <div class="faq-question">Is there a maximum number of matches I can play?</div>
+              <div class="faq-answer">No! Play as many matches as you want. Just join any available lobby.</div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
   <!-- Global Confetti Canvas (for victory celebration) -->
   <canvas id="confetti-canvas"></canvas>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-content">
+      <span class="footer-copyright">&copy; 2026 RPS Arena. All rights reserved.</span>
+      <nav class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="terms.html">Terms of Service</a>
+      </nav>
+    </div>
+  </footer>
 
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.0/ethers.umd.min.js"></script>
