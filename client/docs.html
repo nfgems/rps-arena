@@ -15,8 +15,7 @@
     .docs-hero { text-align: center; padding: 60px 0; margin-bottom: 40px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
     .docs-hero h1 { font-size: 48px; font-weight: 900; margin-bottom: 16px; background: linear-gradient(135deg, var(--rock-color), var(--paper-color), var(--scissors-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .docs-hero p { font-size: 18px; color: var(--text-secondary); max-width: 600px; margin: 0 auto; }
-    .docs-nav { position: sticky; top: 70px; background: var(--bg-card); border-radius: 12px; padding: 20px; margin-bottom: 40px; z-index: 100; transition: opacity 0.3s ease, transform 0.3s ease; }
-    .docs-nav.hidden { opacity: 0; pointer-events: none; transform: translateY(-10px); }
+    .docs-nav { background: var(--bg-card); border-radius: 12px; padding: 20px; margin-bottom: 40px; }
     .docs-nav-title { font-size: 12px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 12px; letter-spacing: 1px; }
     .docs-nav-links { display: flex; flex-wrap: wrap; gap: 8px; }
     .docs-nav-links a { padding: 8px 16px; background: var(--bg-dark); border-radius: 20px; color: var(--text-secondary); text-decoration: none; font-size: 13px; transition: all 0.2s; }
@@ -238,12 +237,15 @@
         │   ├── <span class="file">protocol.js</span> <span class="comment"># Message validation schemas</span><br>
         │   ├── <span class="file">config.js</span> <span class="comment"># Centralized configuration</span><br>
         │   ├── <span class="file">alerts.js</span> <span class="comment"># Discord webhooks with retry</span><br>
-        │   ├── <span class="file">logger.js</span> <span class="comment"># Winston logging setup</span><br>
+        │   ├── <span class="file">logger.js</span> <span class="comment"># Match event logging, replay/audit trail</span><br>
+        │   ├── <span class="file">appLogger.js</span> <span class="comment"># Winston logger with file rotation</span><br>
         │   ├── <span class="file">session.js</span> <span class="comment"># Session management, token rotation</span><br>
         │   ├── <span class="file">bot.js</span> <span class="comment"># Bot players with AI movement</span><br>
         │   └── <span class="file">sentry.js</span> <span class="comment"># Error tracking initialization</span><br>
         ├── <span class="folder">client/</span> <span class="comment"># Frontend application</span><br>
         │   ├── <span class="file">index.html</span> <span class="comment"># Main game interface</span><br>
+        │   ├── <span class="file">how-to.html</span> <span class="comment"># How to play guide</span><br>
+        │   ├── <span class="file">docs.html</span> <span class="comment"># Technical documentation</span><br>
         │   ├── <span class="file">style.css</span> <span class="comment"># Styling</span><br>
         │   └── <span class="folder">src/</span><br>
         │       ├── <span class="file">main.js</span> <span class="comment"># App initialization</span><br>
@@ -256,8 +258,12 @@
         │       ├── <span class="file">confetti.js</span> <span class="comment"># Victory animation</span><br>
         │       └── <span class="file">lobbyBackground.js</span> <span class="comment"># Animated lobby background</span><br>
         ├── <span class="folder">database/</span> <span class="comment"># Schema files</span><br>
+        │   └── <span class="file">schema.sql</span> <span class="comment"># SQLite table definitions</span><br>
         ├── <span class="folder">tests/</span> <span class="comment"># Test suites (security, load, e2e)</span><br>
         ├── <span class="folder">backups/</span> <span class="comment"># Automated database backups</span><br>
+        ├── <span class="file">.env.example</span> <span class="comment"># Environment variable template</span><br>
+        ├── <span class="file">package.json</span> <span class="comment"># Dependencies and npm scripts</span><br>
+        ├── <span class="file">README.md</span> <span class="comment"># Project documentation</span><br>
         ├── <span class="file">nixpacks.toml</span> <span class="comment"># Railway build config</span><br>
         └── <span class="file">railway.json</span> <span class="comment"># Railway deployment config</span>
       </div>
@@ -362,6 +368,33 @@
         <li><strong>Authority:</strong> Server-authoritative (client sends input, server calculates)</li>
         <li><strong>Frozen State:</strong> Players frozen during countdown and showdown freeze</li>
       </ul>
+
+      <h3>Spawn System</h3>
+      <p>Players spawn at predetermined positions based on the deterministic RNG seed for the match:</p>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Spawn Configuration</h4>
+          <div class="spec-item"><span class="spec-label">Algorithm</span><span class="spec-value">Triangle formation</span></div>
+          <div class="spec-item"><span class="spec-label">Min Distance</span><span class="spec-value">200px between players</span></div>
+          <div class="spec-item"><span class="spec-label">Arena Padding</span><span class="spec-value">100px from edges</span></div>
+          <div class="spec-item"><span class="spec-label">Randomization</span><span class="spec-value">Seeded RNG per match</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Default Spawn Points</h4>
+          <div class="spec-item"><span class="spec-label">Player 1</span><span class="spec-value">Top-center region</span></div>
+          <div class="spec-item"><span class="spec-label">Player 2</span><span class="spec-value">Bottom-left region</span></div>
+          <div class="spec-item"><span class="spec-label">Player 3</span><span class="spec-value">Bottom-right region</span></div>
+        </div>
+      </div>
+      <div class="code-block">
+        <pre><span class="comment">// Spawn position calculation</span>
+<span class="keyword">const</span> spawnPoints = [
+  { x: ARENA_WIDTH / <span class="number">2</span>, y: ARENA_HEIGHT * <span class="number">0.2</span> },      <span class="comment">// Top center</span>
+  { x: ARENA_WIDTH * <span class="number">0.2</span>, y: ARENA_HEIGHT * <span class="number">0.8</span> },    <span class="comment">// Bottom left</span>
+  { x: ARENA_WIDTH * <span class="number">0.8</span>, y: ARENA_HEIGHT * <span class="number">0.8</span> }     <span class="comment">// Bottom right</span>
+];
+<span class="comment">// Positions shuffled using seeded RNG for fairness</span></pre>
+      </div>
     </section>
 
     <!-- Section 4: Showdown Mode -->
@@ -422,6 +455,39 @@
         <h4>Simultaneous Capture Tiebreaker</h4>
         <p>If both players reach 2 hearts on the same tick, the winner is determined by random selection to ensure fairness.</p>
       </div>
+
+      <h3>Heart Collection Details</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Heart Properties</h4>
+          <div class="spec-item"><span class="spec-label">Pickup Radius</span><span class="spec-value highlight">30 pixels</span></div>
+          <div class="spec-item"><span class="spec-label">Visual Size</span><span class="spec-value">20px radius</span></div>
+          <div class="spec-item"><span class="spec-label">Spawn Count</span><span class="spec-value">3 hearts</span></div>
+          <div class="spec-item"><span class="spec-label">Win Threshold</span><span class="spec-value">2 hearts</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Spawn Algorithm</h4>
+          <div class="spec-item"><span class="spec-label">Distribution</span><span class="spec-value">Random within arena</span></div>
+          <div class="spec-item"><span class="spec-label">Edge Padding</span><span class="spec-value">100px minimum</span></div>
+          <div class="spec-item"><span class="spec-label">Player Distance</span><span class="spec-value">150px minimum</span></div>
+          <div class="spec-item"><span class="spec-label">Heart Spacing</span><span class="spec-value">100px minimum</span></div>
+        </div>
+      </div>
+      <div class="code-block">
+        <pre><span class="comment">// Heart spawn algorithm</span>
+<span class="keyword">function</span> spawnHearts(players) {
+  <span class="keyword">const</span> hearts = [];
+  <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i < <span class="number">3</span>; i++) {
+    <span class="keyword">let</span> pos = findValidPosition({
+      minEdgePadding: <span class="number">100</span>,
+      minPlayerDistance: <span class="number">150</span>,
+      minHeartDistance: <span class="number">100</span>
+    });
+    hearts.push({ id: <span class="string">`heart-${i}`</span>, x: pos.x, y: pos.y });
+  }
+  <span class="keyword">return</span> hearts;
+}</pre>
+      </div>
     </section>
 
     <!-- Section 5: Networking -->
@@ -470,6 +536,51 @@
 <span class="keyword">const</span> jitter = Math.random() * <span class="number">0.5</span> + <span class="number">0.5</span>;  <span class="comment">// 50-100%</span>
 <span class="keyword">const</span> delay = Math.min(baseDelay * Math.pow(<span class="number">2</span>, attempt) * jitter, maxDelay);</pre>
       </div>
+
+      <h3>Lobby Management</h3>
+      <div class="specs-grid">
+        <div class="spec-card">
+          <h4>Timeout System</h4>
+          <div class="spec-item"><span class="spec-label">Timeout Duration</span><span class="spec-value">30 minutes</span></div>
+          <div class="spec-item"><span class="spec-label">Timer Start</span><span class="spec-value">First player joins</span></div>
+          <div class="spec-item"><span class="spec-label">Timer Reset</span><span class="spec-value">Never (fixed deadline)</span></div>
+          <div class="spec-item"><span class="spec-label">Refund Trigger</span><span class="spec-value">Player requests after timeout</span></div>
+        </div>
+        <div class="spec-card">
+          <h4>Mutex Locking</h4>
+          <div class="spec-item"><span class="spec-label">Lock Scope</span><span class="spec-value">Per-lobby</span></div>
+          <div class="spec-item"><span class="spec-label">Lock Timeout</span><span class="spec-value">5 seconds</span></div>
+          <div class="spec-item"><span class="spec-label">Purpose</span><span class="spec-value">Prevent race conditions</span></div>
+          <div class="spec-item"><span class="spec-label">Operations</span><span class="spec-value">Join, leave, match start</span></div>
+        </div>
+      </div>
+
+      <h4>Lobby State Machine</h4>
+      <div class="flow-diagram">
+        <div class="flow-steps">
+          <div class="flow-step">empty</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">waiting (1-2 players)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step highlight">ready (3 players)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">in_progress</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">empty</div>
+        </div>
+      </div>
+
+      <div class="info-card info">
+        <h4>Timeout Refund Flow</h4>
+        <p>When a lobby times out (30 min since first join without filling to 3 players):</p>
+        <ul style="margin-top: 8px; margin-bottom: 0;">
+          <li>Players can click "Request Refund" button</li>
+          <li>Server verifies timeout has passed</li>
+          <li>Full 1 USDC refunded to each player's wallet</li>
+          <li>Lobby reset to empty state</li>
+          <li>Refund transaction hash recorded in database</li>
+        </ul>
+      </div>
     </section>
 
     <!-- Section 6: WebSocket API -->
@@ -510,6 +621,8 @@
             <tr><td><code>MATCH_STARTING</code></td><td>Match begins, countdown starts</td></tr>
             <tr><td><code>ROLE_ASSIGNMENT</code></td><td>Your assigned RPS role</td></tr>
             <tr><td><code>COUNTDOWN</code></td><td>Countdown timer (10...0)</td></tr>
+            <tr><td><code>PREVIEW_START</code></td><td>3-second preview phase begins (players see arena)</td></tr>
+            <tr><td><code>GAME_START</code></td><td>Preview ended, movement enabled</td></tr>
             <tr><td><code>SNAPSHOT</code></td><td>Game state update (20 Hz) with all player positions</td></tr>
             <tr><td><code>ELIMINATION</code></td><td>Player eliminated event</td></tr>
             <tr><td><code>BOUNCE</code></td><td>Same-role collision bounce</td></tr>
@@ -565,6 +678,7 @@
             <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/leaderboard</code></td><td>Top 100 players (all/monthly/weekly)</td></tr>
             <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/player/username</code></td><td>Set username (requires 1+ match)</td></tr>
             <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/player/photo</code></td><td>Upload profile photo (max 500KB)</td></tr>
+            <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/dev-mode</code></td><td>Check if server is in development mode</td></tr>
           </tbody>
         </table>
       </div>
@@ -630,7 +744,7 @@
       <div class="code-block"><pre>id TEXT PRIMARY KEY, match_id TEXT, tick INTEGER, event_type TEXT (start|elimination|bounce|disconnect|end), data TEXT (JSON), created_at TEXT</pre></div>
 
       <h4>player_stats (Denormalized)</h4>
-      <div class="code-block"><pre>wallet_address TEXT PRIMARY KEY, username TEXT, profile_photo TEXT, total_matches INTEGER, wins INTEGER, losses INTEGER, total_earnings_usdc INTEGER, total_spent_usdc INTEGER, current_win_streak INTEGER, best_win_streak INTEGER, first_match_at TEXT, last_match_at TEXT</pre></div>
+      <div class="code-block"><pre>wallet_address TEXT PRIMARY KEY, username TEXT, profile_photo TEXT, total_matches INTEGER, wins INTEGER, losses INTEGER, total_earnings_usdc INTEGER, total_spent_usdc INTEGER, current_win_streak INTEGER, best_win_streak INTEGER, first_match_at TEXT, last_match_at TEXT, updated_at TEXT</pre></div>
 
       <h4>payout_attempts (Audit)</h4>
       <div class="code-block"><pre>id TEXT PRIMARY KEY, match_id TEXT, lobby_id INTEGER, recipient_address TEXT, amount_usdc INTEGER, attempt_number INTEGER, status TEXT (pending|success|failed), tx_hash TEXT, error_message TEXT, error_type TEXT (transient|permanent), source_wallet TEXT, treasury_balance_before INTEGER, created_at TEXT</pre></div>
@@ -957,6 +1071,7 @@ moveTowardTarget(bot, target);</pre>
         <div class="spec-card"><h4>input.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Keyboard event tracking (WASD + Arrows), sequence numbers for anti-cheat.</p></div>
         <div class="spec-card"><h4>interpolation.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Linear position interpolation between server snapshots for smooth 60fps rendering.</p></div>
         <div class="spec-card"><h4>confetti.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Victory celebration particle animation system.</p></div>
+        <div class="spec-card"><h4>lobbyBackground.js</h4><p style="color: var(--text-secondary); font-size: 14px;">Animated lobby canvas background with floating RPS icons.</p></div>
       </div>
 
       <h3>Screen States</h3>
@@ -1050,12 +1165,34 @@ npm run test:e2e       <span class="comment"># End-to-end testing</span></pre>
 }</pre>
       </div>
 
-      <h3>Graceful Shutdown</h3>
+      <h3>Server Initialization Sequence</h3>
+      <p>On startup, the server initializes components in this order:</p>
       <ol>
-        <li>Stop accepting new connections</li>
+        <li><strong>Sentry:</strong> Initialize error tracking (if DSN configured)</li>
+        <li><strong>Database:</strong> Initialize SQLite with WAL mode, run migrations</li>
+        <li><strong>Lobby Wallets:</strong> Derive 12 HD wallets from seed, encrypt private keys</li>
+        <li><strong>Lobbies:</strong> Create/verify 12 lobby records with deposit addresses</li>
+        <li><strong>Match Recovery:</strong> Check for interrupted matches, void stale ones, refund players</li>
+        <li><strong>HTTP Servers:</strong> Start Express on PORT (production) and ADMIN_PORT (admin)</li>
+        <li><strong>WebSocket Servers:</strong> Attach WS handlers to both HTTP servers</li>
+        <li><strong>RPC Provider:</strong> Initialize ethers.js with primary RPC, test connection</li>
+        <li><strong>Health Monitor:</strong> Start game loop health checks (2s interval)</li>
+        <li><strong>RPC Monitor:</strong> Start RPC health checks (60s interval)</li>
+        <li><strong>Session Cleanup:</strong> Schedule hourly expired session cleanup</li>
+        <li><strong>Backup Scheduler:</strong> Start hourly database backup job</li>
+        <li><strong>Discord Alert:</strong> Send SERVER_START notification</li>
+      </ol>
+
+      <h3>Graceful Shutdown</h3>
+      <p>On SIGTERM/SIGINT, the server shuts down in this order:</p>
+      <ol>
+        <li>Stop accepting new HTTP connections</li>
+        <li>Stop accepting new WebSocket connections</li>
+        <li>Wait for in-progress payouts to complete (5s max)</li>
         <li>Close existing WebSocket connections with code 1001</li>
+        <li>Send SERVER_SHUTDOWN Discord alert</li>
         <li>Flush Sentry events (2s timeout)</li>
-        <li>Close database connection</li>
+        <li>WAL checkpoint and close database connection</li>
         <li>Exit with code 0</li>
       </ol>
 
@@ -1135,6 +1272,12 @@ npm run test:e2e       <span class="comment"># End-to-end testing</span></pre>
             <tr><td><code>BACKUP_KEEP_COUNT</code></td><td>24</td><td>Backups to retain</td></tr>
             <tr><td><code>DEBUG_PHYSICS</code></td><td>false</td><td>Physics debug logging</td></tr>
             <tr><td><code>DEBUG_MATCH</code></td><td>false</td><td>Match debug logging</td></tr>
+            <tr><td><code>LOBBY_TIMEOUT_MINUTES</code></td><td>30</td><td>Lobby timeout before refund available</td></tr>
+            <tr><td><code>PREVIEW_DURATION</code></td><td>3</td><td>Preview phase duration (seconds)</td></tr>
+            <tr><td><code>SHOWDOWN_FREEZE_DURATION</code></td><td>3</td><td>Showdown freeze duration (seconds)</td></tr>
+            <tr><td><code>STATE_PERSIST_INTERVAL</code></td><td>5</td><td>Ticks between state persistence</td></tr>
+            <tr><td><code>HEART_PICKUP_RADIUS</code></td><td>30</td><td>Heart collection radius (pixels)</td></tr>
+            <tr><td><code>MIN_SPAWN_DISTANCE</code></td><td>200</td><td>Minimum distance between spawn points</td></tr>
           </tbody>
         </table>
       </div>
@@ -1151,33 +1294,5 @@ npm run test:e2e       <span class="comment"># End-to-end testing</span></pre>
       </p>
     </footer>
   </div>
-  <script>
-    (function() {
-      const nav = document.querySelector('.docs-nav');
-      let lastScrollY = 0;
-      let ticking = false;
-
-      function updateNav() {
-        const currentScrollY = window.scrollY;
-
-        // Show nav when at top or scrolling up, hide when scrolling down
-        if (currentScrollY < 100 || currentScrollY < lastScrollY) {
-          nav.classList.remove('hidden');
-        } else {
-          nav.classList.add('hidden');
-        }
-
-        lastScrollY = currentScrollY;
-        ticking = false;
-      }
-
-      window.addEventListener('scroll', function() {
-        if (!ticking) {
-          window.requestAnimationFrame(updateNav);
-          ticking = true;
-        }
-      });
-    })();
-  </script>
 </body>
 </html>
