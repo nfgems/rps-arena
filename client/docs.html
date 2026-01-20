@@ -63,7 +63,7 @@
     .badge-client { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
     .badge-server { background: rgba(46, 204, 113, 0.2); color: var(--success); }
     .flow-diagram { background: var(--bg-card); border-radius: 12px; padding: 30px; margin: 20px 0; text-align: center; }
-    .flow-steps { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; }
+    .flow-steps { display: flex; flex-wrap: nowrap; justify-content: center; align-items: center; gap: 10px; overflow-x: auto; padding: 10px 0; }
     .flow-step { background: var(--bg-dark); padding: 12px 20px; border-radius: 8px; font-size: 14px; color: var(--text-primary); border: 1px solid rgba(255, 255, 255, 0.1); }
     .flow-step.highlight { background: var(--accent); border-color: var(--accent); }
     .flow-arrow { color: var(--text-secondary); font-size: 20px; }
@@ -336,11 +336,13 @@
           <div class="flow-arrow">&#8594;</div>
           <div class="flow-step">Role Reveal (10s)</div>
           <div class="flow-arrow">&#8594;</div>
-          <div class="flow-step highlight">Preview (3s)</div>
+          <div class="flow-step">Preview (3s)</div>
           <div class="flow-arrow">&#8594;</div>
           <div class="flow-step">Battle Phase</div>
           <div class="flow-arrow">&#8594;</div>
-          <div class="flow-step">Showdown or Winner</div>
+          <div class="flow-step">Showdown (2 left)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Winner</div>
         </div>
       </div>
 
@@ -558,15 +560,15 @@
       <h4>Lobby State Machine</h4>
       <div class="flow-diagram">
         <div class="flow-steps">
-          <div class="flow-step">empty</div>
-          <div class="flow-arrow">&#8594;</div>
           <div class="flow-step">waiting (1-2 players)</div>
           <div class="flow-arrow">&#8594;</div>
-          <div class="flow-step highlight">ready (3 players)</div>
+          <div class="flow-step">ready (3 players)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">countdown</div>
           <div class="flow-arrow">&#8594;</div>
           <div class="flow-step">in_progress</div>
           <div class="flow-arrow">&#8594;</div>
-          <div class="flow-step">empty</div>
+          <div class="flow-step">completed</div>
         </div>
       </div>
 
@@ -905,7 +907,7 @@
           <div class="flow-arrow">&#8594;</div>
           <div class="flow-step">Verify Signature</div>
           <div class="flow-arrow">&#8594;</div>
-          <div class="flow-step highlight">Session Created</div>
+          <div class="flow-step">Session Created</div>
         </div>
       </div>
 
@@ -1076,23 +1078,20 @@ moveTowardTarget(bot, target);</pre>
 
       <h3>Screen States</h3>
       <div class="flow-diagram">
-        <div class="flow-steps" style="flex-direction: column; gap: 8px;">
-          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-            <div class="flow-step">Landing</div>
-            <div class="flow-arrow">&#8594;</div>
-            <div class="flow-step">Lobby Browser</div>
-            <div class="flow-arrow">&#8594;</div>
-            <div class="flow-step">Waiting Room</div>
-          </div>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-            <div class="flow-step">Role Reveal (10s)</div>
-            <div class="flow-arrow">&#8594;</div>
-            <div class="flow-step">Preview (3s)</div>
-            <div class="flow-arrow">&#8594;</div>
-            <div class="flow-step highlight">Game</div>
-            <div class="flow-arrow">&#8594;</div>
-            <div class="flow-step">Results</div>
-          </div>
+        <div class="flow-steps">
+          <div class="flow-step">Landing</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Lobby Browser</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Waiting Room</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Role Reveal (10s)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Preview (3s)</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Game</div>
+          <div class="flow-arrow">&#8594;</div>
+          <div class="flow-step">Results</div>
         </div>
       </div>
 
