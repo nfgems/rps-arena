@@ -276,11 +276,13 @@ Expiration Time: ${expirationTime}`;
   }
 
   function handlePlayAgain() {
+    Confetti.stop();
     showScreen('lobby');
   }
 
   async function handleDevReset() {
     // Reset lobby and go back to lobby screen for quick re-testing
+    Confetti.stop();
     try {
       await fetch('/api/dev/reset', {
         method: 'POST',
@@ -660,6 +662,11 @@ Expiration Time: ${expirationTime}`;
 
     // Update player score
     showdownState.scores[data.playerId] = data.playerScore;
+
+    // Trigger confetti immediately when someone wins (collects 2nd heart)
+    if (data.playerScore >= 2) {
+      Confetti.start(3000); // 3 second celebration
+    }
   }
 
   function handleWalletAccountChanged(event) {

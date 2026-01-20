@@ -536,7 +536,7 @@ function isPlayerTouchingHeart(player, heart) {
 
 /**
  * Process heart captures for all alive players
- * Uses swept collision detection to catch fast-moving players
+ * Handles simultaneous captures fairly with random tiebreaker
  * @param {Array} players - Array of player objects
  * @param {Array} hearts - Array of heart objects
  * @returns {Array} Array of capture events [{playerId, heartId}, ...]
@@ -545,16 +545,37 @@ function processHeartCaptures(players, hearts) {
   const captures = [];
   const alive = players.filter(p => p.alive);
 
-  for (const player of alive) {
-    for (const heart of hearts) {
-      if (!heart.captured && isPlayerTouchingHeart(player, heart)) {
-        heart.captured = true;
-        heart.capturedBy = player.id;
-        captures.push({
-          playerId: player.id,
-          heartId: heart.id,
-        });
-      }
+  for (const heart of hearts) {
+    if (heart.captured) continue;
+
+    // Find ALL players touching this heart
+    const touchingPlayers = alive.filter(player => {
+      const captureRadius = PLAYER_RADIUS + HEART_RADIUS;
+      const dx = player.x - heart.x;
+      const dy = player.y - heart.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return dist <= captureRadius;
+    });
+
+    if (touchingPlayers.length === 1) {
+      // Single player - normal capture
+      const player = touchingPlayers[0];
+      heart.captured = true;
+      heart.capturedBy = player.id;
+      captures.push({
+        playerId: player.id,
+        heartId: heart.id,
+      });
+    } else if (touchingPlayers.length > 1) {
+      // Multiple players touching same heart - random tiebreaker
+      const winner = touchingPlayers[Math.floor(Math.random() * touchingPlayers.length)];
+      heart.captured = true;
+      heart.capturedBy = winner.id;
+      captures.push({
+        playerId: winner.id,
+        heartId: heart.id,
+      });
+      console.log(`[HEART] Simultaneous capture tiebreaker for heart ${heart.id}! Players ${touchingPlayers.map(p => p.id.slice(-4)).join(' and ')} both touching. Random winner: ${winner.id.slice(-4)}`);
     }
   }
 

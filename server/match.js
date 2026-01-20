@@ -612,8 +612,8 @@ function processTick(match) {
 
     const captures = physics.processHeartCaptures(match.players, match.showdown.hearts);
 
+    // First pass: update all scores and broadcast captures
     for (const capture of captures) {
-      // Update player score
       if (!match.showdown.scores[capture.playerId]) {
         match.showdown.scores[capture.playerId] = 0;
       }
@@ -625,19 +625,37 @@ function processTick(match) {
       const captureMsg = protocol.createHeartCaptured(capture.playerId, capture.heartId, playerScore);
       broadcastToMatch(match, captureMsg);
 
-      // Always log heart captures for debugging
       console.log(`[SHOWDOWN] Player ${capture.playerId.slice(-4)} captured heart ${capture.heartId}, score: ${playerScore}/${SHOWDOWN_HEARTS_TO_WIN}`);
+    }
 
-      // Check if player won by capturing enough hearts
-      if (playerScore >= SHOWDOWN_HEARTS_TO_WIN) {
-        const winner = match.players.find(p => p.id === capture.playerId);
-        if (DEBUG_MATCH) console.log(`[SHOWDOWN] Winner: ${winner.id.slice(-4)} with ${playerScore} hearts!`);
+    // Second pass: check for winners only if captures occurred (handles simultaneous captures fairly)
+    if (captures.length > 0) {
+      const winners = Object.entries(match.showdown.scores)
+        .filter(([id, score]) => score >= SHOWDOWN_HEARTS_TO_WIN)
+        .map(([id]) => match.players.find(p => p.id === id))
+        .filter(p => p); // Filter out any undefined
 
-        // Send final snapshot before ending match so client sees player at heart position
+      if (winners.length === 1) {
+        // Single winner - normal case
+        const winner = winners[0];
+        if (DEBUG_MATCH) console.log(`[SHOWDOWN] Winner: ${winner.id.slice(-4)} with ${match.showdown.scores[winner.id]} hearts!`);
+
         const finalSnapshot = protocol.createSnapshot(match.tick, match.players);
         broadcastToMatch(match, finalSnapshot);
 
         endMatch(match, winner, 'showdown_winner').catch(err => {
+          console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
+        });
+        return;
+      } else if (winners.length > 1) {
+        // Simultaneous win - random tiebreaker for fairness
+        const winner = winners[Math.floor(Math.random() * winners.length)];
+        console.log(`[SHOWDOWN] Simultaneous win tiebreaker! Players ${winners.map(w => w.id.slice(-4)).join(' and ')} both reached ${SHOWDOWN_HEARTS_TO_WIN} hearts. Random winner: ${winner.id.slice(-4)}`);
+
+        const finalSnapshot = protocol.createSnapshot(match.tick, match.players);
+        broadcastToMatch(match, finalSnapshot);
+
+        endMatch(match, winner, 'showdown_winner_tiebreak').catch(err => {
           console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
         });
         return;
