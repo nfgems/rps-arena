@@ -2022,7 +2022,7 @@ body.hide-footer .site-footer {
 /* Tutorial Exit Button */
 .tutorial-exit-btn {
   position: absolute;
-  top: 20px;
+  top: 80px;
   right: 20px;
   z-index: 20;
 }
@@ -2030,7 +2030,7 @@ body.hide-footer .site-footer {
 /* Tutorial Restart Button */
 .tutorial-restart-btn {
   position: absolute;
-  top: 20px;
+  top: 80px;
   left: 20px;
   z-index: 20;
 }
