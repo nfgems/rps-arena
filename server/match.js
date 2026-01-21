@@ -767,9 +767,9 @@ function processTick(match) {
     return;
   }
 
-  // 6. Broadcast snapshot at 20 Hz (tick-rate agnostic)
-  // ticksPerSnapshot = TICK_RATE / 20 (e.g., 30Hz -> 1.5, 60Hz -> 3)
-  const SNAPSHOT_RATE = 20;
+  // 6. Broadcast snapshot at 30 Hz (tick-rate agnostic)
+  // ticksPerSnapshot = TICK_RATE / 30 (e.g., 30Hz -> 1, 60Hz -> 2)
+  const SNAPSHOT_RATE = 30;
   const ticksPerSnapshot = physics.TICK_RATE / SNAPSHOT_RATE;
   match.snapshotCounter++;
   if (match.snapshotCounter >= ticksPerSnapshot) {

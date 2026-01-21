@@ -12,8 +12,8 @@ const Interpolation = (function () {
   let localPlayerPosition = { x: 0, y: 0 };
 
   // Constants
-  const SNAPSHOT_INTERVAL = 50; // 20 Hz = 50ms between snapshots
-  const BLEND_SPEED = 0.15; // How fast to blend local player toward server position (reduced for smoother feel)
+  const SNAPSHOT_INTERVAL = 33; // 30 Hz = ~33ms between snapshots
+  const BLEND_SPEED = 0.3; // How fast to blend local player toward server position
 
   // Track if local position has been initialized from server
   let localPositionInitialized = false;
