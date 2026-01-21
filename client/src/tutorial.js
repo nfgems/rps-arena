@@ -36,6 +36,12 @@ const Tutorial = (function () {
   let direction = { dx: 0, dy: 0 };
   let keysPressed = {};
 
+  // Client-side prediction state
+  let predictedX = 0;
+  let predictedY = 0;
+  let lastFrameTime = 0;
+  const MAX_SPEED = 450; // Must match server physics
+
   /**
    * Initialize the tutorial
    */
@@ -123,6 +129,11 @@ const Tutorial = (function () {
       ...data.bots.map(b => ({ ...b, isLocal: false })),
     ];
 
+    // Initialize prediction position
+    predictedX = data.player.x;
+    predictedY = data.player.y;
+    lastFrameTime = performance.now();
+
     // Show tutorial screen
     showTutorialScreen();
 
@@ -140,8 +151,28 @@ const Tutorial = (function () {
     for (const serverPlayer of data.players) {
       const localPlayer = players.find(p => p.id === serverPlayer.id);
       if (localPlayer) {
-        localPlayer.x = serverPlayer.x;
-        localPlayer.y = serverPlayer.y;
+        if (localPlayer.isLocal) {
+          // For local player, reconcile with server but keep prediction smooth
+          // Only snap if too far off (> 50 pixels difference)
+          const dx = serverPlayer.x - predictedX;
+          const dy = serverPlayer.y - predictedY;
+          const drift = Math.sqrt(dx * dx + dy * dy);
+
+          if (drift > 30) {
+            // Snap to server position if too far off
+            predictedX = serverPlayer.x;
+            predictedY = serverPlayer.y;
+          } else if (drift > 5) {
+            // Smoothly blend toward server position
+            predictedX = predictedX * 0.8 + serverPlayer.x * 0.2;
+            predictedY = predictedY * 0.8 + serverPlayer.y * 0.2;
+          }
+          // If drift < 5, keep prediction (close enough)
+        } else {
+          // For bots, just update position directly
+          localPlayer.x = serverPlayer.x;
+          localPlayer.y = serverPlayer.y;
+        }
         localPlayer.alive = serverPlayer.alive;
         localPlayer.role = serverPlayer.role;
       } else {
@@ -166,6 +197,14 @@ const Tutorial = (function () {
     currentStep = data.step;
     instruction = data.instruction;
     updateInstructionOverlay();
+
+    // Reset prediction on step change - server may have repositioned player
+    // The next snapshot will give us the correct position
+    const localPlayer = players.find(p => p.isLocal);
+    if (localPlayer) {
+      predictedX = localPlayer.x;
+      predictedY = localPlayer.y;
+    }
   }
 
   function handleTutorialElimination(data) {
@@ -346,6 +385,40 @@ const Tutorial = (function () {
 
     function loop() {
       if (!active) return;
+
+      const now = performance.now();
+      let deltaTime = (now - lastFrameTime) / 1000; // seconds
+      lastFrameTime = now;
+
+      // Cap delta time to prevent huge jumps (e.g., on first frame or after tab switch)
+      if (deltaTime > 0.1) deltaTime = 0.016; // Cap at ~60fps frame time
+
+      // Client-side prediction for local player movement
+      const localPlayer = players.find(p => p.isLocal);
+      if (localPlayer && localPlayer.alive && (direction.dx !== 0 || direction.dy !== 0)) {
+        // Normalize diagonal movement
+        let moveX = direction.dx;
+        let moveY = direction.dy;
+        if (direction.dx !== 0 && direction.dy !== 0) {
+          const diagonalFactor = 1 / Math.sqrt(2);
+          moveX *= diagonalFactor;
+          moveY *= diagonalFactor;
+        }
+
+        // Apply movement with frame-rate independence
+        predictedX += moveX * MAX_SPEED * deltaTime;
+        predictedY += moveY * MAX_SPEED * deltaTime;
+
+        // Clamp to arena bounds
+        predictedX = Math.max(PLAYER_RADIUS, Math.min(ARENA_WIDTH - PLAYER_RADIUS, predictedX));
+        predictedY = Math.max(PLAYER_RADIUS, Math.min(ARENA_HEIGHT - PLAYER_RADIUS, predictedY));
+      }
+
+      // Update local player position for rendering
+      if (localPlayer) {
+        localPlayer.x = predictedX;
+        localPlayer.y = predictedY;
+      }
 
       animationFrame++;
       render(animationFrame);

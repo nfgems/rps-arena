@@ -335,10 +335,11 @@ function processBotBehavior(tutorial, bot) {
       break;
 
     case BOT_BEHAVIOR.FLEE_SLOW:
-      const awaySlow = getAwayDirection(bot, player);
+      // Flee but stay catchable - move perpendicular to player sometimes
+      const awaySlow = getFleeTarget(bot, player, tutorial.tick);
       bot.targetX = awaySlow.x;
       bot.targetY = awaySlow.y;
-      moveTowardTarget(bot, bot.targetX, bot.targetY, 0.4);
+      moveTowardTarget(bot, bot.targetX, bot.targetY, 0.35);
       break;
 
     case BOT_BEHAVIOR.FLEE_MEDIUM:
@@ -372,7 +373,8 @@ function processBotBehavior(tutorial, bot) {
       if (tutorial.showdown && tutorial.showdown.hearts) {
         const target = tutorial.showdown.hearts.find(h => !h.captured);
         if (target) {
-          moveTowardTarget(bot, target.x, target.y, 0.5);
+          // Move slowly so player has a fair chance to learn
+          moveTowardTarget(bot, target.x, target.y, 0.3);
         }
       }
       break;
@@ -383,16 +385,77 @@ function processBotBehavior(tutorial, bot) {
 }
 
 /**
- * Get direction away from a target
+ * Get flee target for tutorial bot - stays in visible area and is catchable
+ * Bot moves in an arc pattern to stay visible and give player a fair chase
+ */
+function getFleeTarget(bot, player, tick) {
+  // Define a safe play area in the center of the arena
+  const minX = 250;
+  const maxX = physics.ARENA_WIDTH - 250;
+  const minY = 200;
+  const maxY = physics.ARENA_HEIGHT - 200;
+  const centerX = physics.ARENA_WIDTH / 2;
+  const centerY = physics.ARENA_HEIGHT / 2;
+
+  const dx = bot.x - player.x;
+  const dy = bot.y - player.y;
+  const distToPlayer = Math.sqrt(dx * dx + dy * dy) || 1;
+
+  // If player is far, just wander in the safe zone
+  if (distToPlayer > 400) {
+    // Move toward center slowly
+    return { x: centerX, y: centerY };
+  }
+
+  // Calculate perpendicular direction for arc movement
+  // This makes the bot circle around rather than flee in a straight line
+  const perpX = -dy / distToPlayer;
+  const perpY = dx / distToPlayer;
+
+  // Mix fleeing away with perpendicular movement for an arc
+  const fleeX = dx / distToPlayer;
+  const fleeY = dy / distToPlayer;
+
+  // Alternate direction based on tick to prevent getting stuck
+  const arcDir = Math.sin(tick * 0.02) > 0 ? 1 : -1;
+
+  // Blend: 60% flee direction + 40% perpendicular for smooth arc
+  let targetX = bot.x + (fleeX * 0.6 + perpX * arcDir * 0.4) * 150;
+  let targetY = bot.y + (fleeY * 0.6 + perpY * arcDir * 0.4) * 150;
+
+  // If target would be outside safe zone, move toward center instead
+  if (targetX < minX || targetX > maxX || targetY < minY || targetY > maxY) {
+    targetX = bot.x * 0.7 + centerX * 0.3;
+    targetY = bot.y * 0.7 + centerY * 0.3;
+  }
+
+  return {
+    x: Math.max(minX, Math.min(maxX, targetX)),
+    y: Math.max(minY, Math.min(maxY, targetY)),
+  };
+}
+
+/**
+ * Get direction away from a target (used for FLEE_MEDIUM)
  */
 function getAwayDirection(from, target) {
   const dx = from.x - target.x;
   const dy = from.y - target.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
+  // Keep in visible area
+  const minX = 200;
+  const maxX = physics.ARENA_WIDTH - 200;
+  const minY = 150;
+  const maxY = physics.ARENA_HEIGHT - 150;
+
+  let fleeX = from.x + (dx / dist) * 200;
+  let fleeY = from.y + (dy / dist) * 200;
+
+  // Clamp to safe area
   return {
-    x: Math.max(50, Math.min(physics.ARENA_WIDTH - 50, from.x + (dx / dist) * 200)),
-    y: Math.max(50, Math.min(physics.ARENA_HEIGHT - 50, from.y + (dy / dist) * 200)),
+    x: Math.max(minX, Math.min(maxX, fleeX)),
+    y: Math.max(minY, Math.min(maxY, fleeY)),
   };
 }
 
@@ -498,8 +561,13 @@ function processStepLogic(tutorial) {
       if (ticksInStep === 1) {
         setupHeartCollection(tutorial);
       }
-      // Player collecting 2 hearts triggers next step
-      if (tutorial.heartsCollectedByPlayer >= 2) {
+      // Check if anyone collected 2 hearts (player OR bot)
+      const anyoneWon = tutorial.heartsCollectedByPlayer >= 2 ||
+        (tutorial.showdown && tutorial.showdown.scores &&
+          Object.values(tutorial.showdown.scores).some(score => score >= 2));
+
+      if (anyoneWon && !tutorial.heartCollectionComplete) {
+        tutorial.heartCollectionComplete = true; // Prevent multiple triggers
         setTimeout(() => {
           if (tutorial.status === 'running') {
             advanceToStep(tutorial, TUTORIAL_STEPS.BEING_HUNTED);
