@@ -473,46 +473,46 @@ const Tutorial = (function () {
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
     // Stay still if player is far away
-    const fleeRadius = 400;
+    const fleeRadius = 500;
     if (dist > fleeRadius) {
       return;
     }
 
     // Flee direction (away from player)
-    let fleeX = dx / dist;
-    let fleeY = dy / dist;
+    const fleeX = dx / dist;
+    const fleeY = dy / dist;
 
-    // Check where fleeing would take us
-    const edgeBuffer = 150;
-    const futureX = bot.x + fleeX * 100;
-    const futureY = bot.y + fleeY * 100;
+    // Check if near edges
+    const safeMargin = 100;
+    const nearRight = bot.x > ARENA_WIDTH - safeMargin - 50;
+    const nearLeft = bot.x < safeMargin + 50;
+    const nearBottom = bot.y > ARENA_HEIGHT - safeMargin - 50;
+    const nearTop = bot.y < safeMargin + 50;
 
-    // If fleeing would hit an edge, redirect along the edge instead
-    const wouldHitLeft = futureX < edgeBuffer;
-    const wouldHitRight = futureX > ARENA_WIDTH - edgeBuffer;
-    const wouldHitTop = futureY < edgeBuffer;
-    const wouldHitBottom = futureY > ARENA_HEIGHT - edgeBuffer;
+    let moveX = fleeX;
+    let moveY = fleeY;
 
-    if (wouldHitLeft || wouldHitRight) {
-      // Redirect vertically - go toward whichever vertical direction has more room
-      fleeX = 0;
-      fleeY = bot.y < ARENA_HEIGHT / 2 ? 1 : -1;
+    // If fleeing would push into a wall, redirect along the wall
+    if ((nearRight && fleeX > 0) || (nearLeft && fleeX < 0)) {
+      // Can't flee horizontally, move vertically away from player
+      moveX = 0;
+      moveY = dy > 0 ? 1 : -1;
     }
-    if (wouldHitTop || wouldHitBottom) {
-      // Redirect horizontally - go toward whichever horizontal direction has more room
-      fleeY = 0;
-      fleeX = bot.x < ARENA_WIDTH / 2 ? 1 : -1;
+    if ((nearBottom && fleeY > 0) || (nearTop && fleeY < 0)) {
+      // Can't flee vertically, move horizontally away from player
+      moveY = 0;
+      moveX = dx > 0 ? 1 : -1;
     }
 
     // Normalize
-    const moveDist = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
-    fleeX /= moveDist;
-    fleeY /= moveDist;
+    const moveDist = Math.sqrt(moveX * moveX + moveY * moveY) || 1;
+    moveX /= moveDist;
+    moveY /= moveDist;
 
     // Apply movement
     const maxSpeed = (MAX_SPEED / TICK_RATE) * speedMultiplier;
-    bot.x += fleeX * maxSpeed;
-    bot.y += fleeY * maxSpeed;
+    bot.x += moveX * maxSpeed;
+    bot.y += moveY * maxSpeed;
 
     // Clamp to arena bounds
     bot.x = Math.max(PLAYER_RADIUS, Math.min(ARENA_WIDTH - PLAYER_RADIUS, bot.x));
