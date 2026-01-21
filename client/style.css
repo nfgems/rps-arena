@@ -176,6 +176,8 @@ body {
 /* Lobby Screen */
 #lobby-screen {
   overflow: hidden;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 #lobby-bg-canvas {
@@ -867,8 +869,9 @@ body {
   justify-content: center;
   align-items: stretch;
   max-width: none;
-  height: calc(100vh - 45px); /* Subtract footer height */
+  height: calc(100vh - 55px); /* Subtract footer height (~45px + buffer) */
   padding-top: 60px; /* Header height */
+  padding-bottom: 15px;
   box-sizing: border-box;
 }
 
