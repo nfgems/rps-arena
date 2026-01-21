@@ -604,15 +604,23 @@ function setupChaseTarget(tutorial) {
 }
 
 function setupShowdownIntro(tutorial) {
-  // Prepare for showdown
+  // Reset player state for showdown demonstration
+  tutorial.player.alive = true;
+  tutorial.player.frozen = false;
+  tutorial.player.x = 300;
+  tutorial.player.y = physics.ARENA_HEIGHT / 2;
+
+  // Prepare bot for showdown
   const paperBot = tutorial.bots.find(b => b.role === 'paper');
   paperBot.alive = true;
+  paperBot.frozen = false;
   paperBot.x = physics.ARENA_WIDTH - 300;
   paperBot.y = physics.ARENA_HEIGHT / 2;
   paperBot.behavior = BOT_BEHAVIOR.WAIT;
 
-  tutorial.player.x = 300;
-  tutorial.player.y = physics.ARENA_HEIGHT / 2;
+  // Hide scissors bot
+  const scissorsBot = tutorial.bots.find(b => b.role === 'scissors');
+  if (scissorsBot) scissorsBot.alive = false;
 
   updateInstruction(tutorial, STEP_INSTRUCTIONS[TUTORIAL_STEPS.SHOWDOWN_INTRO]);
 }

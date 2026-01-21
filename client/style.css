@@ -1965,7 +1965,7 @@ body {
 /* Tutorial Instruction Overlay */
 .tutorial-instruction-overlay {
   position: absolute;
-  top: 20px;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
@@ -2006,6 +2006,14 @@ body {
   position: absolute;
   top: 20px;
   right: 20px;
+  z-index: 20;
+}
+
+/* Tutorial Restart Button */
+.tutorial-restart-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
   z-index: 20;
 }
 

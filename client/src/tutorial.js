@@ -116,6 +116,20 @@ const Tutorial = (function () {
     direction = { dx: 0, dy: 0 };
     keysPressed = {};
     inputSequence = 0;
+
+    // Hide tutorial complete overlay if visible
+    const completeOverlay = document.getElementById('tutorial-complete-overlay');
+    if (completeOverlay) {
+      completeOverlay.classList.add('hidden');
+    }
+
+    // Clear canvas
+    if (ctx && canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Remove resize listener
+    window.removeEventListener('resize', resizeCanvas);
   }
 
   // ============================================

@@ -43,6 +43,7 @@ const UI = (function () {
     screens.countdown = document.getElementById('countdown-screen');
     screens.game = document.getElementById('game-screen');
     screens.result = document.getElementById('result-screen');
+    screens.tutorial = document.getElementById('tutorial-screen');
 
     paymentModal = document.getElementById('payment-modal');
 
@@ -159,6 +160,7 @@ const UI = (function () {
     document.getElementById('start-tutorial-btn').addEventListener('click', handleStartTutorial);
     document.getElementById('tutorial-exit-btn').addEventListener('click', handleExitTutorial);
     document.getElementById('tutorial-complete-btn').addEventListener('click', handleTutorialComplete);
+    document.getElementById('tutorial-restart-btn').addEventListener('click', handleRestartTutorial);
     document.getElementById('how-to-play-tutorial-btn').addEventListener('click', handleStartTutorial);
 
     // Network event listeners
@@ -327,6 +329,17 @@ Expiration Time: ${expirationTime}`;
     // Hide the complete overlay
     document.getElementById('tutorial-complete-overlay').classList.add('hidden');
     showScreen('lobby');
+  }
+
+  function handleRestartTutorial() {
+    // End current tutorial and start a new one
+    if (typeof Tutorial !== 'undefined') {
+      Tutorial.end();
+      // Small delay to let server clean up, then restart
+      setTimeout(() => {
+        Tutorial.start();
+      }, 100);
+    }
   }
 
   async function handleDevReset() {
