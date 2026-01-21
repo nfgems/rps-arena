@@ -11,6 +11,7 @@ const Tutorial = (function () {
   let players = [];
   let showdownState = null;
   let gameLoopId = null;
+  let inputLoopId = null;
   let inputSequence = 0;
 
   // Canvas and context
@@ -106,6 +107,11 @@ const Tutorial = (function () {
       gameLoopId = null;
     }
 
+    if (inputLoopId) {
+      clearInterval(inputLoopId);
+      inputLoopId = null;
+    }
+
     // Reset input state
     direction = { dx: 0, dy: 0 };
     keysPressed = {};
@@ -126,7 +132,15 @@ const Tutorial = (function () {
     // Initialize player state
     players = [
       { ...data.player, isLocal: true },
-      ...data.bots.map(b => ({ ...b, isLocal: false })),
+      ...data.bots.map(b => ({
+        ...b,
+        isLocal: false,
+        serverX: b.x,
+        serverY: b.y,
+        velX: 0,
+        velY: 0,
+        lastSnapshotTime: performance.now(),
+      })),
     ];
 
     // Initialize prediction position
@@ -152,26 +166,33 @@ const Tutorial = (function () {
       const localPlayer = players.find(p => p.id === serverPlayer.id);
       if (localPlayer) {
         if (localPlayer.isLocal) {
-          // For local player, reconcile with server but keep prediction smooth
-          // Only snap if too far off (> 50 pixels difference)
+          // For local player, use same reconciliation as main game
+          // Only blend if there's significant drift - otherwise trust prediction
           const dx = serverPlayer.x - predictedX;
           const dy = serverPlayer.y - predictedY;
           const drift = Math.sqrt(dx * dx + dy * dy);
 
-          if (drift > 30) {
-            // Snap to server position if too far off
+          if (drift > 100) {
+            // Large drift - snap immediately (teleport, lag spike, etc.)
             predictedX = serverPlayer.x;
             predictedY = serverPlayer.y;
           } else if (drift > 5) {
-            // Smoothly blend toward server position
-            predictedX = predictedX * 0.8 + serverPlayer.x * 0.2;
-            predictedY = predictedY * 0.8 + serverPlayer.y * 0.2;
+            // Gradual blend - same as main game's Interpolation module
+            predictedX += dx * 0.15;
+            predictedY += dy * 0.15;
           }
-          // If drift < 5, keep prediction (close enough)
+          // If drift <= 5, prediction is accurate - keep it
         } else {
-          // For bots, just update position directly
-          localPlayer.x = serverPlayer.x;
-          localPlayer.y = serverPlayer.y;
+          // For bots, use extrapolation like main game does for other players
+          // Calculate velocity from previous SERVER position (not extrapolated position)
+          const prevServerX = localPlayer.serverX !== undefined ? localPlayer.serverX : serverPlayer.x;
+          const prevServerY = localPlayer.serverY !== undefined ? localPlayer.serverY : serverPlayer.y;
+          localPlayer.velX = serverPlayer.x - prevServerX;
+          localPlayer.velY = serverPlayer.y - prevServerY;
+          localPlayer.serverX = serverPlayer.x;
+          localPlayer.serverY = serverPlayer.y;
+          localPlayer.lastSnapshotTime = performance.now();
+          // Position will be extrapolated in render loop
         }
         localPlayer.alive = serverPlayer.alive;
         localPlayer.role = serverPlayer.role;
@@ -316,8 +337,13 @@ const Tutorial = (function () {
   }
 
   function startInputLoop() {
+    // Clear any existing input loop
+    if (inputLoopId) {
+      clearInterval(inputLoopId);
+    }
+
     // Send input at 60Hz
-    setInterval(() => {
+    inputLoopId = setInterval(() => {
       if (!active) return;
 
       inputSequence++;
@@ -382,6 +408,7 @@ const Tutorial = (function () {
 
   function startGameLoop() {
     let animationFrame = 0;
+    const SNAPSHOT_INTERVAL = 67; // 15 Hz = ~67ms (server sends every 2 ticks at 30Hz)
 
     function loop() {
       if (!active) return;
@@ -418,6 +445,16 @@ const Tutorial = (function () {
       if (localPlayer) {
         localPlayer.x = predictedX;
         localPlayer.y = predictedY;
+      }
+
+      // Extrapolate bot positions for smooth movement between snapshots
+      for (const player of players) {
+        if (!player.isLocal && player.serverX !== undefined) {
+          const elapsed = now - (player.lastSnapshotTime || now);
+          const t = Math.min(elapsed / SNAPSHOT_INTERVAL, 1.5); // Cap extrapolation
+          player.x = player.serverX + (player.velX || 0) * t;
+          player.y = player.serverY + (player.velY || 0) * t;
+        }
       }
 
       animationFrame++;

@@ -2,19 +2,18 @@
  * Tutorial Module for RPS Arena
  * Provides a comprehensive free practice mode against scripted bots
  *
- * Tutorial Steps (matching actual game flow):
+ * Tutorial Steps:
  * 1. INTRO - Welcome and explain what they'll learn
  * 2. ROLE_EXPLAIN - Explain their role and who beats who
- * 3. PREVIEW - 3-second preview phase (can see but can't move)
- * 4. MOVEMENT - Learn WASD/Arrow keys movement
- * 5. CHASE_TARGET - Chase the role you beat
- * 6. ELIMINATION - Eliminate the target
- * 7. SHOWDOWN_INTRO - Explain showdown mode triggers
- * 8. SHOWDOWN_FREEZE - Experience the 3-second freeze
- * 9. HEART_COLLECTION - Collect hearts to win
- * 10. BEING_HUNTED - Experience being chased by your threat
- * 11. BEING_ELIMINATED - Get eliminated to see what it's like
- * 12. COMPLETE - Tutorial finished
+ * 3. MOVEMENT - Learn WASD/Arrow keys movement
+ * 4. CHASE_TARGET - Chase the role you beat
+ * 5. ELIMINATION - Eliminate the target
+ * 6. BEING_HUNTED - Experience being chased by your threat
+ * 7. BEING_ELIMINATED - Get eliminated to see what it's like
+ * 8. SHOWDOWN_INTRO - Explain showdown mode triggers
+ * 9. SHOWDOWN_FREEZE - Experience the 3-second freeze
+ * 10. HEART_COLLECTION - Collect hearts to win
+ * 11. COMPLETE - Tutorial finished
  */
 
 const physics = require('./physics');
@@ -26,15 +25,14 @@ const activeTutorials = new Map();
 const TUTORIAL_STEPS = {
   INTRO: 'intro',
   ROLE_EXPLAIN: 'role_explain',
-  PREVIEW: 'preview',
   MOVEMENT: 'movement',
   CHASE_TARGET: 'chase_target',
   ELIMINATION: 'elimination',
+  BEING_HUNTED: 'being_hunted',
+  BEING_ELIMINATED: 'being_eliminated',
   SHOWDOWN_INTRO: 'showdown_intro',
   SHOWDOWN_FREEZE: 'showdown_freeze',
   HEART_COLLECTION: 'heart_collection',
-  BEING_HUNTED: 'being_hunted',
-  BEING_ELIMINATED: 'being_eliminated',
   COMPLETE: 'complete',
 };
 
@@ -65,12 +63,6 @@ const STEP_INSTRUCTIONS = {
     text: 'You are ROCK (orange). Rock beats SCISSORS (green). But PAPER (blue) beats you!',
     subtext: 'Remember: Chase GREEN, avoid BLUE. Press any key to continue.',
     highlight: 'player',
-  },
-  [TUTORIAL_STEPS.PREVIEW]: {
-    title: 'Preview Phase',
-    text: 'In a real match, you get 3 seconds to see player positions before you can move.',
-    subtext: 'Watch the arena... Movement starts in 3 seconds.',
-    highlight: null,
   },
   [TUTORIAL_STEPS.MOVEMENT]: {
     title: 'Movement Controls',
@@ -110,14 +102,14 @@ const STEP_INSTRUCTIONS = {
   },
   [TUTORIAL_STEPS.BEING_HUNTED]: {
     title: 'Now You\'re the Prey!',
-    text: 'Let\'s restart. Now PAPER (blue) will chase YOU. You must avoid them!',
-    subtext: 'Try to survive! Run from the blue player.',
+    text: 'Now let\'s see the other side. PAPER (blue) beats ROCK - they\'re hunting YOU!',
+    subtext: 'Let them catch you to see what elimination feels like.',
     highlight: 'bot_threat',
   },
   [TUTORIAL_STEPS.BEING_ELIMINATED]: {
     title: 'You Were Eliminated!',
-    text: 'This is what happens when a player who beats your role catches you.',
-    subtext: 'In a real match, you\'d watch the remaining players fight. Press any key to finish.',
+    text: 'This is what happens when someone who beats your role catches you.',
+    subtext: 'Now let\'s learn about SHOWDOWN mode...',
     highlight: null,
   },
   [TUTORIAL_STEPS.COMPLETE]: {
@@ -503,15 +495,6 @@ function processStepLogic(tutorial) {
     case TUTORIAL_STEPS.ROLE_EXPLAIN:
       // Wait for any input, auto-advance after 5 seconds
       if (!tutorial.waitingForInput || ticksInStep > 150) {
-        advanceToStep(tutorial, TUTORIAL_STEPS.PREVIEW);
-      }
-      break;
-
-    case TUTORIAL_STEPS.PREVIEW:
-      // Freeze player, show preview for 3 seconds
-      tutorial.player.frozen = true;
-      if (ticksInStep >= 90) { // 3 seconds at 30Hz
-        tutorial.player.frozen = false;
         advanceToStep(tutorial, TUTORIAL_STEPS.MOVEMENT);
       }
       break;
@@ -532,7 +515,21 @@ function processStepLogic(tutorial) {
       break;
 
     case TUTORIAL_STEPS.ELIMINATION:
-      // Brief pause after elimination
+      // Brief pause after elimination, then move to being hunted
+      if (ticksInStep >= 60) { // 2 seconds
+        advanceToStep(tutorial, TUTORIAL_STEPS.BEING_HUNTED);
+      }
+      break;
+
+    case TUTORIAL_STEPS.BEING_HUNTED:
+      if (ticksInStep === 1) {
+        setupBeingHunted(tutorial);
+      }
+      // Player elimination triggers next step (handled in collision detection)
+      break;
+
+    case TUTORIAL_STEPS.BEING_ELIMINATED:
+      // Brief pause after being eliminated, then move to showdown
       if (ticksInStep >= 60) { // 2 seconds
         advanceToStep(tutorial, TUTORIAL_STEPS.SHOWDOWN_INTRO);
       }
@@ -570,23 +567,9 @@ function processStepLogic(tutorial) {
         tutorial.heartCollectionComplete = true; // Prevent multiple triggers
         setTimeout(() => {
           if (tutorial.status === 'running') {
-            advanceToStep(tutorial, TUTORIAL_STEPS.BEING_HUNTED);
+            advanceToStep(tutorial, TUTORIAL_STEPS.COMPLETE);
           }
         }, 1500);
-      }
-      break;
-
-    case TUTORIAL_STEPS.BEING_HUNTED:
-      if (ticksInStep === 1) {
-        setupBeingHunted(tutorial);
-      }
-      // Player elimination triggers next step
-      break;
-
-    case TUTORIAL_STEPS.BEING_ELIMINATED:
-      // Wait for any input or auto-advance after 3 seconds
-      if (!tutorial.waitingForInput || ticksInStep >= 90) {
-        advanceToStep(tutorial, TUTORIAL_STEPS.COMPLETE);
       }
       break;
 
