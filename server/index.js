@@ -25,6 +25,7 @@ const match = require('./match');
 const payments = require('./payments');
 const bot = require('./bot');
 const tutorial = require('./tutorial');
+const depositMonitor = require('./depositMonitor');
 const { sendAlert, AlertType } = require('./alerts');
 const config = require('./config');
 
@@ -1074,6 +1075,9 @@ async function initialize() {
 
   // R-3: Start periodic RPC health monitor
   payments.startRpcHealthMonitor();
+
+  // Start deposit monitor to auto-recover missed deposits
+  depositMonitor.start();
 
   // Start automated backup scheduler (hourly)
   const backupIntervalHours = parseInt(process.env.BACKUP_INTERVAL_HOURS, 10);

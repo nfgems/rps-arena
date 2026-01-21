@@ -702,23 +702,6 @@ body {
   margin-bottom: 16px;
 }
 
-.deposit-address {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-dark);
-  padding: 12px;
-  border-radius: 8px;
-  margin: 16px 0;
-}
-
-.deposit-address code {
-  flex: 1;
-  font-size: 12px;
-  word-break: break-all;
-  text-align: left;
-}
-
 .warning {
   font-size: 12px;
   color: var(--warning);

@@ -17,6 +17,7 @@ const UI = (function () {
 
   // Modal
   let paymentModal = null;
+  let paymentInProgress = false; // Prevent closing modal while transaction is pending
 
   // Current state
   let currentScreen = 'landing';
@@ -132,7 +133,9 @@ const UI = (function () {
     // Payment modal buttons
     document.getElementById('send-payment-btn').addEventListener('click', handleSendPayment);
     document.getElementById('cancel-join-btn').addEventListener('click', hidePaymentModal);
-    document.getElementById('copy-address-btn').addEventListener('click', handleCopyAddress);
+    document.getElementById('payment-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'payment-modal') hidePaymentModal(); // Close on backdrop click (blocked by paymentInProgress)
+    });
 
     // Event delegation for lobby list buttons (prevents listener accumulation on re-render)
     document.getElementById('lobby-list').addEventListener('click', handleLobbyListClick);
@@ -380,15 +383,23 @@ Expiration Time: ${expirationTime}`;
 
   async function handleSendPayment() {
     const btn = document.getElementById('send-payment-btn');
+    const cancelBtn = document.getElementById('cancel-join-btn');
     const status = document.getElementById('payment-status');
 
     try {
       btn.disabled = true;
+      cancelBtn.disabled = true;
+      paymentInProgress = true;
       status.classList.remove('hidden');
       status.querySelector('span').textContent = 'Sending transaction...';
 
-      const depositAddress = document.getElementById('deposit-address').textContent;
-      const txHash = await Wallet.sendUSDC(depositAddress, 1, (progressType, hash) => {
+      // Get deposit address from cached lobby data
+      const lobby = cachedLobbies.find(l => l.id === pendingLobbyId);
+      if (!lobby) {
+        throw new Error('Lobby not found');
+      }
+
+      const txHash = await Wallet.sendUSDC(lobby.depositAddress, 1, (progressType, hash) => {
         if (progressType === 'confirming') {
           status.querySelector('span').textContent =
             'Transaction sent! Please allow 3 block confirmations (~6 sec). You will be automatically added to the lobby.';
@@ -399,25 +410,18 @@ Expiration Time: ${expirationTime}`;
       Network.joinLobby(pendingLobbyId, txHash);
 
       // Hide modal (server will confirm via LOBBY_UPDATE which sets currentLobbyId)
+      paymentInProgress = false;
       hidePaymentModal();
 
     } catch (error) {
       console.error('Payment failed:', error);
       status.querySelector('span').textContent = 'Payment failed: ' + error.message;
       btn.disabled = false;
+      cancelBtn.disabled = false;
+      paymentInProgress = false;
     }
   }
 
-  function handleCopyAddress() {
-    const address = document.getElementById('deposit-address').textContent;
-    navigator.clipboard.writeText(address);
-
-    const btn = document.getElementById('copy-address-btn');
-    btn.textContent = 'Copied!';
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-    }, 2000);
-  }
 
   // ============================================
   // Network Event Handlers
@@ -429,7 +433,7 @@ Expiration Time: ${expirationTime}`;
   }
 
   function handleLobbyUpdate(data) {
-    const { lobbyId, players, status, timeRemaining, depositAddress } = data;
+    const { lobbyId, players, status, timeRemaining } = data;
 
     // Check if we're in this lobby
     const myId = Network.getUserId();
@@ -897,8 +901,7 @@ Expiration Time: ${expirationTime}`;
         <div class="lobby-actions">
           <button class="btn btn-primary join-btn"
                   ${joinDisabled ? 'disabled' : ''}
-                  data-lobby-id="${lobby.id}"
-                  data-deposit-address="${lobby.depositAddress}">
+                  data-lobby-id="${lobby.id}">
             ${joinText}
           </button>
           ${devMode ? `
@@ -925,12 +928,11 @@ Expiration Time: ${expirationTime}`;
     // Handle join button clicks
     if (target.classList.contains('join-btn') && !target.disabled) {
       const lobbyId = parseInt(target.dataset.lobbyId, 10);
-      const depositAddress = target.dataset.depositAddress;
 
       if (devMode) {
         handleDevJoin(lobbyId);
       } else {
-        showPaymentModal(lobbyId, depositAddress);
+        showPaymentModal(lobbyId);
       }
       return;
     }
@@ -1064,18 +1066,19 @@ Expiration Time: ${expirationTime}`;
     }
   }
 
-  function showPaymentModal(lobbyId, depositAddress) {
+  function showPaymentModal(lobbyId) {
     pendingLobbyId = lobbyId; // Store pending lobby (not confirmed yet)
     document.getElementById('join-lobby-id').textContent = lobbyId;
-    document.getElementById('deposit-address').textContent = depositAddress;
     document.getElementById('payment-status').classList.add('hidden');
     document.getElementById('send-payment-btn').disabled = false;
     paymentModal.classList.remove('hidden');
   }
 
   function hidePaymentModal() {
+    if (paymentInProgress) return; // Don't allow closing while transaction is pending
     paymentModal.classList.add('hidden');
     pendingLobbyId = null; // Clear pending lobby when modal closes
+    document.getElementById('cancel-join-btn').disabled = false; // Reset cancel button state
   }
 
   // ============================================
