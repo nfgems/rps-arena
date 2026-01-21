@@ -461,6 +461,11 @@
       <div class="lobby-timer">
         <span id="timeout-display">Waiting for players...</span>
       </div>
+      <!-- Lobby countdown (shown when 3 players join) -->
+      <div id="lobby-countdown" class="lobby-countdown hidden">
+        <div class="lobby-countdown-text">Match starting in</div>
+        <div id="lobby-countdown-number" class="lobby-countdown-number">10</div>
+      </div>
       <button id="refund-btn" class="btn btn-secondary hidden">Request Refund</button>
       <p class="waiting-warning">Once you join, your 1 USDC is committed until match starts or 30-minute timeout.</p>
     </div>

@@ -22,6 +22,7 @@ const ServerMessages = {
   WELCOME: 'WELCOME',
   LOBBY_LIST: 'LOBBY_LIST',
   LOBBY_UPDATE: 'LOBBY_UPDATE',
+  LOBBY_COUNTDOWN: 'LOBBY_COUNTDOWN',
   REFUND_PROCESSED: 'REFUND_PROCESSED',
   MATCH_STARTING: 'MATCH_STARTING',
   ROLE_ASSIGNMENT: 'ROLE_ASSIGNMENT',
@@ -357,6 +358,14 @@ function createLobbyUpdate(lobbyId, players, status, timeRemaining, depositAddre
   });
 }
 
+function createLobbyCountdown(lobbyId, secondsRemaining) {
+  return JSON.stringify({
+    type: ServerMessages.LOBBY_COUNTDOWN,
+    lobbyId,
+    secondsRemaining,
+  });
+}
+
 function createRefundProcessed(lobbyId, reason, players) {
   return JSON.stringify({
     type: ServerMessages.REFUND_PROCESSED,
@@ -588,6 +597,7 @@ module.exports = {
   createWelcome,
   createLobbyList,
   createLobbyUpdate,
+  createLobbyCountdown,
   createRefundProcessed,
   createMatchStarting,
   createRoleAssignment,

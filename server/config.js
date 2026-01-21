@@ -54,6 +54,7 @@ function generateSecureRngSeed() {
 // ============================================
 
 const LOBBY_TIMEOUT_MS = parseInt(process.env.LOBBY_TIMEOUT_MS, 10) || 30 * 60 * 1000; // 30 minutes
+const LOBBY_COUNTDOWN_DURATION = parseInt(process.env.LOBBY_COUNTDOWN_DURATION, 10) || 10; // seconds before match starts
 
 // ============================================
 // Export Configuration
@@ -82,4 +83,5 @@ module.exports = {
 
   // Lobby
   LOBBY_TIMEOUT_MS,
+  LOBBY_COUNTDOWN_DURATION,
 };

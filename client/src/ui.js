@@ -20,10 +20,12 @@ const UI = (function () {
 
   // Current state
   let currentScreen = 'landing';
-  let currentLobbyId = null;
+  let currentLobbyId = null; // Set only after server confirms join via LOBBY_UPDATE
+  let pendingLobbyId = null; // Lobby ID while payment modal is open (not yet confirmed)
   let myRole = null;
   let devMode = false;
   let spawnPosition = { x: 800, y: 450 }; // Default to center, updated by role assignment
+  let cachedLobbies = []; // Cache lobby list for re-rendering when returning to lobby screen
 
   // Showdown mode state
   let showdownState = null; // { hearts: [], scores: {}, showText: bool, textProgress: number, freezeEndTime: number }
@@ -166,6 +168,7 @@ const UI = (function () {
     // Network event listeners
     Network.addEventListener('LOBBY_LIST', handleLobbyList);
     Network.addEventListener('LOBBY_UPDATE', handleLobbyUpdate);
+    Network.addEventListener('LOBBY_COUNTDOWN', handleLobbyCountdown);
     Network.addEventListener('MATCH_STARTING', handleMatchStarting);
     Network.addEventListener('ROLE_ASSIGNMENT', handleRoleAssignment);
     Network.addEventListener('COUNTDOWN', handleCountdown);
@@ -212,6 +215,11 @@ const UI = (function () {
       document.body.classList.add('hide-footer');
     } else {
       document.body.classList.remove('hide-footer');
+    }
+
+    // Re-render lobby list when returning to lobby screen (updates join button states)
+    if (screenName === 'lobby' && cachedLobbies.length > 0) {
+      renderLobbyList(cachedLobbies);
     }
   }
 
@@ -380,10 +388,10 @@ Expiration Time: ${expirationTime}`;
 
       status.querySelector('span').textContent = 'Waiting for confirmation...';
 
-      // Send to server
-      Network.joinLobby(currentLobbyId, txHash);
+      // Send to server (use pendingLobbyId, not currentLobbyId)
+      Network.joinLobby(pendingLobbyId, txHash);
 
-      // Hide modal (server will confirm via LOBBY_UPDATE)
+      // Hide modal (server will confirm via LOBBY_UPDATE which sets currentLobbyId)
       hidePaymentModal();
 
     } catch (error) {
@@ -409,6 +417,7 @@ Expiration Time: ${expirationTime}`;
   // ============================================
 
   function handleLobbyList(data) {
+    cachedLobbies = data.lobbies;
     renderLobbyList(data.lobbies);
   }
 
@@ -429,7 +438,37 @@ Expiration Time: ${expirationTime}`;
     }
   }
 
+  function handleLobbyCountdown(data) {
+    const { lobbyId, secondsRemaining } = data;
+
+    // Only update if we're in this lobby and on the waiting screen
+    if (currentLobbyId !== lobbyId) return;
+
+    // Update the lobby countdown display
+    const countdownDisplay = document.getElementById('lobby-countdown');
+    const timerDisplay = document.getElementById('timeout-display');
+
+    if (countdownDisplay) {
+      countdownDisplay.classList.remove('hidden');
+      const countdownNumber = document.getElementById('lobby-countdown-number');
+      if (countdownNumber) {
+        countdownNumber.textContent = secondsRemaining;
+      }
+    }
+
+    // Update the timer display text
+    if (timerDisplay) {
+      timerDisplay.textContent = `Match starting in ${secondsRemaining}...`;
+    }
+  }
+
   function handleMatchStarting(data) {
+    // Hide lobby countdown when transitioning to match
+    const lobbyCountdown = document.getElementById('lobby-countdown');
+    if (lobbyCountdown) {
+      lobbyCountdown.classList.add('hidden');
+    }
+
     showScreen('countdown');
 
     // Reset preview phase state
@@ -813,6 +852,9 @@ Expiration Time: ${expirationTime}`;
     const container = document.getElementById('lobby-list');
     container.innerHTML = '';
 
+    // Check if player is already in a lobby (prevents joining multiple lobbies)
+    const alreadyInLobby = currentLobbyId !== null;
+
     for (const lobby of lobbies) {
       const item = document.createElement('div');
       item.className = 'lobby-item';
@@ -824,7 +866,8 @@ Expiration Time: ${expirationTime}`;
         lobby.status === 'waiting' ? `${lobby.playerCount}/3 - Waiting` :
           lobby.status === 'in_progress' ? 'In Progress' : `${lobby.playerCount}/3`;
 
-      const joinDisabled = lobby.status === 'in_progress' || lobby.playerCount >= 3;
+      // Disable join if: in progress, full, OR player is already in another lobby
+      const joinDisabled = lobby.status === 'in_progress' || lobby.playerCount >= 3 || alreadyInLobby;
       const joinText = devMode ? 'Join (Free)' : 'Join (1 USDC)';
 
       item.innerHTML = `
@@ -936,6 +979,13 @@ Expiration Time: ${expirationTime}`;
 
     // Update timer
     const timerDisplay = document.getElementById('timeout-display');
+    const lobbyCountdown = document.getElementById('lobby-countdown');
+
+    // Hide lobby countdown by default (will be shown by handleLobbyCountdown)
+    if (lobbyCountdown) {
+      lobbyCountdown.classList.add('hidden');
+    }
+
     if (timeRemaining !== null && timeRemaining > 0) {
       const minutes = Math.floor(timeRemaining / 60000);
       const seconds = Math.floor((timeRemaining % 60000) / 1000);
@@ -949,7 +999,7 @@ Expiration Time: ${expirationTime}`;
   }
 
   function showPaymentModal(lobbyId, depositAddress) {
-    currentLobbyId = lobbyId;
+    pendingLobbyId = lobbyId; // Store pending lobby (not confirmed yet)
     document.getElementById('join-lobby-id').textContent = lobbyId;
     document.getElementById('deposit-address').textContent = depositAddress;
     document.getElementById('payment-status').classList.add('hidden');
@@ -959,6 +1009,7 @@ Expiration Time: ${expirationTime}`;
 
   function hidePaymentModal() {
     paymentModal.classList.add('hidden');
+    pendingLobbyId = null; // Clear pending lobby when modal closes
   }
 
   // ============================================

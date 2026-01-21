@@ -407,6 +407,39 @@ body {
   font-size: 18px;
 }
 
+/* Lobby Countdown (when 3 players join) */
+.lobby-countdown {
+  margin: 24px 0;
+  padding: 20px;
+  background: rgba(233, 69, 96, 0.1);
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  animation: pulse-border 1s ease-in-out infinite;
+}
+
+.lobby-countdown-text {
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.lobby-countdown-number {
+  font-size: 72px;
+  font-weight: 900;
+  color: var(--accent);
+  text-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+  line-height: 1;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(233, 69, 96, 0.6);
+  }
+}
+
 .waiting-warning {
   font-size: 12px;
   color: var(--text-secondary);

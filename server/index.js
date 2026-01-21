@@ -45,6 +45,9 @@ const adminWss = new WebSocket.Server({ server: adminServer });
 const PUBLIC_PORT = process.env.PORT || 3000;
 const ADMIN_PORT = process.env.ADMIN_PORT || 3001;
 
+// Track active lobby countdowns: lobbyId -> { interval, secondsRemaining, isAdminPort }
+const lobbyCountdowns = new Map();
+
 // Serve static files from client directory (both servers)
 app.use(express.static(path.join(__dirname, '..', 'client')));
 app.use(express.json());
@@ -515,6 +518,105 @@ function decrementConnection(ip) {
 }
 
 // ============================================
+// Lobby Countdown Management
+// ============================================
+
+/**
+ * Start a countdown for a lobby that is ready (3 players)
+ * Broadcasts countdown ticks to all lobby players, then starts the match
+ * @param {number} lobbyId - The lobby ID
+ * @param {boolean} isAdminPort - Whether this is the admin port
+ */
+function startLobbyCountdown(lobbyId, isAdminPort) {
+  // Don't start if countdown already in progress
+  if (lobbyCountdowns.has(lobbyId)) {
+    return;
+  }
+
+  let secondsRemaining = config.LOBBY_COUNTDOWN_DURATION;
+
+  // Send initial countdown
+  const initialMsg = protocol.createLobbyCountdown(lobbyId, secondsRemaining);
+  lobby.broadcastToLobby(lobbyId, initialMsg);
+
+  const interval = setInterval(async () => {
+    secondsRemaining--;
+
+    // Update stored countdown state for reconnecting players
+    const countdownData = lobbyCountdowns.get(lobbyId);
+    if (countdownData) {
+      countdownData.secondsRemaining = secondsRemaining;
+    }
+
+    if (secondsRemaining > 0) {
+      // Broadcast countdown tick
+      const countdownMsg = protocol.createLobbyCountdown(lobbyId, secondsRemaining);
+      lobby.broadcastToLobby(lobbyId, countdownMsg);
+    } else {
+      // Countdown finished - start the match
+      clearInterval(interval);
+      lobbyCountdowns.delete(lobbyId);
+
+      try {
+        const newMatch = await match.startMatch(lobbyId, isAdminPort);
+        // Update currentMatchId for all connected players in the lobby
+        const lobbyData = lobby.getLobby(lobbyId);
+        if (lobbyData && lobbyData.connections) {
+          for (const [userId, ws] of lobbyData.connections) {
+            if (ws.setMatchId) {
+              ws.setMatchId(newMatch.id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to start match:', error);
+        // If lobby balance is insufficient, void the lobby and refund players
+        if (error.message === 'INSUFFICIENT_LOBBY_BALANCE') {
+          sendAlert(AlertType.INSUFFICIENT_BALANCE, {
+            lobbyId,
+            balance: error.balance || 'unknown',
+          }).catch(alertErr => console.error('Alert send failed:', alertErr));
+          await lobby.processLobbyRefund(lobbyId, 'insufficient_lobby_balance');
+          broadcastLobbyList();
+        } else {
+          // Catch-all: Reset lobby status on any match start error to prevent stuck lobbies
+          console.error(`[MATCH_START] Resetting lobby ${lobbyId} due to match start failure:`, error.message);
+          sendAlert(AlertType.DATABASE_ERROR, {
+            operation: 'match_start',
+            lobbyId,
+            error: error.message,
+          }).catch(alertErr => console.error('Alert send failed:', alertErr));
+          try {
+            await lobby.processLobbyRefund(lobbyId, 'match_start_failed');
+            broadcastLobbyList();
+          } catch (refundErr) {
+            console.error(`[MATCH_START] Failed to refund lobby ${lobbyId}:`, refundErr);
+            // Last resort: force reset the lobby to prevent it being stuck
+            lobby.forceResetLobby(lobbyId);
+            broadcastLobbyList();
+          }
+        }
+      }
+    }
+  }, 1000);
+
+  lobbyCountdowns.set(lobbyId, { interval, secondsRemaining, isAdminPort });
+}
+
+/**
+ * Cancel a lobby countdown (e.g., if a player disconnects)
+ * @param {number} lobbyId - The lobby ID
+ */
+function cancelLobbyCountdown(lobbyId) {
+  const countdown = lobbyCountdowns.get(lobbyId);
+  if (countdown) {
+    clearInterval(countdown.interval);
+    lobbyCountdowns.delete(lobbyId);
+    console.log(`[LOBBY] Countdown cancelled for lobby ${lobbyId}`);
+  }
+}
+
+// ============================================
 // WebSocket Handling - Shared Setup
 // ============================================
 
@@ -707,6 +809,12 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
           lobbyData.deposit_address
         ));
 
+        // If lobby countdown is in progress, send current countdown state
+        const activeCountdown = lobbyCountdowns.get(lobbyData.id);
+        if (activeCountdown) {
+          ws.send(protocol.createLobbyCountdown(lobbyData.id, activeCountdown.secondsRemaining));
+        }
+
         // Check if in active match - use reconnect handler
         if (lobbyData.current_match_id) {
           currentMatchId = lobbyData.current_match_id;
@@ -770,42 +878,10 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
       // Broadcast updated lobby list to all connected clients
       broadcastLobbyList();
 
-      // Check if lobby is ready to start match
+      // Check if lobby is ready to start match - begin lobby countdown
       if (lobbyData.status === 'ready' && players.length === 3) {
-        setTimeout(async () => {
-          try {
-            const newMatch = await match.startMatch(lobbyId, isAdminPort);
-            currentMatchId = newMatch.id;
-          } catch (error) {
-            console.error('Failed to start match:', error);
-            // If lobby balance is insufficient, void the lobby and refund players
-            if (error.message === 'INSUFFICIENT_LOBBY_BALANCE') {
-              sendAlert(AlertType.INSUFFICIENT_BALANCE, {
-                lobbyId,
-                balance: error.balance || 'unknown',
-              }).catch(alertErr => console.error('Alert send failed:', alertErr));
-              await lobby.processLobbyRefund(lobbyId, 'insufficient_lobby_balance');
-              broadcastLobbyList();
-            } else {
-              // Catch-all: Reset lobby status on any match start error to prevent stuck lobbies
-              console.error(`[MATCH_START] Resetting lobby ${lobbyId} due to match start failure:`, error.message);
-              sendAlert(AlertType.DATABASE_ERROR, {
-                operation: 'match_start',
-                lobbyId,
-                error: error.message,
-              }).catch(alertErr => console.error('Alert send failed:', alertErr));
-              try {
-                await lobby.processLobbyRefund(lobbyId, 'match_start_failed');
-                broadcastLobbyList();
-              } catch (refundErr) {
-                console.error(`[MATCH_START] Failed to refund lobby ${lobbyId}:`, refundErr);
-                // Last resort: force reset the lobby to prevent it being stuck
-                lobby.forceResetLobby(lobbyId);
-                broadcastLobbyList();
-              }
-            }
-          }
-        }, 100); // Small delay to ensure all clients received lobby update
+        // Start 10-second lobby countdown before match begins
+        startLobbyCountdown(lobbyId, isAdminPort);
       }
     }
 
@@ -964,6 +1040,14 @@ async function initialize() {
 
   // Initialize lobbies (after recovery to ensure lobbies are reset)
   await lobby.initializeLobbies();
+
+  // Resume countdowns for any lobbies that are in 'ready' status after server restart
+  // This handles the case where the server crashed during a lobby countdown
+  const readyLobbies = lobby.getLobbyList().filter(l => l.status === 'ready' && l.playerCount === 3);
+  for (const readyLobby of readyLobbies) {
+    console.log(`[STARTUP] Resuming countdown for ready lobby ${readyLobby.id}`);
+    startLobbyCountdown(readyLobby.id, false); // Use non-admin port for resumed countdowns
+  }
 
   // Initialize payment provider
   payments.initProvider();
