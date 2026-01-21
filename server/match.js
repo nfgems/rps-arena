@@ -788,9 +788,13 @@ function processTick(match) {
  * If payout fails, voids match and refunds all players
  */
 async function endMatch(match, winner, reason) {
-  if (match.status === 'finished' || match.status === 'void') {
-    return; // Already ended
+  if (match.status === 'finished' || match.status === 'void' || match.status === 'ending') {
+    return; // Already ended or ending
   }
+
+  // CRITICAL: Set status to 'ending' IMMEDIATELY to prevent health monitor from voiding
+  // This must happen BEFORE clearing the game loop interval
+  match.status = 'ending';
 
   clearInterval(match.gameLoopInterval);
 
@@ -822,7 +826,7 @@ async function endMatch(match, winner, reason) {
     // This catches edge cases where funds could be swept between match start and end
     if (!lobbyData || !lobbyData.deposit_address) {
       console.error(`[PAYOUT] Lobby data not found for match ${match.id}, lobby ${match.lobbyId}`);
-      await voidMatch(match.id, 'lobby_not_found');
+      await voidMatch(match.id, 'lobby_not_found', true);
       return;
     }
     const prePayoutBalance = await payments.getUsdcBalance(lobbyData.deposit_address);
@@ -841,7 +845,7 @@ async function endMatch(match, winner, reason) {
 
       // Void match - voidMatch handles logging, refunds, and cleanup
       // Note: gameLoopInterval already cleared above, voidMatch will no-op on it
-      await voidMatch(match.id, 'insufficient_balance_at_payout');
+      await voidMatch(match.id, 'insufficient_balance_at_payout', true);
       return;
     }
 
@@ -997,10 +1001,25 @@ async function endMatch(match, winner, reason) {
 
 /**
  * Void a match (for server crash, mass disconnect)
+ * @param {string} matchId - Match ID
+ * @param {string} reason - Void reason
+ * @param {boolean} force - If true, allows voiding a match in 'ending' state (used by endMatch internally)
  */
-async function voidMatch(matchId, reason) {
+async function voidMatch(matchId, reason, force = false) {
   const match = activeMatches.get(matchId);
   if (!match) return;
+
+  // Don't void a match that's already finished or voided
+  if (match.status === 'finished' || match.status === 'void') {
+    console.log(`[VOID] Match ${matchId} already ${match.status}, skipping void with reason: ${reason}`);
+    return;
+  }
+
+  // Don't void a match in 'ending' state unless forced (prevents health monitor race condition)
+  if (match.status === 'ending' && !force) {
+    console.log(`[VOID] Match ${matchId} is ending, skipping void with reason: ${reason}`);
+    return;
+  }
 
   // Clear both countdown and game loop intervals to prevent leaks
   if (match.countdownInterval) {
@@ -1330,7 +1349,7 @@ function startHealthMonitor() {
     const now = Date.now();
 
     for (const [matchId, match] of activeMatches) {
-      // Only monitor running matches
+      // Only monitor running matches (skip finished, void, or ending)
       if (match.status !== 'running') continue;
 
       // Check if game loop has stalled

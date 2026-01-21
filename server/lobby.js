@@ -482,6 +482,17 @@ async function processLobbyRefund(lobbyId, reason) {
   await acquireLobbyLock(lobbyId);
 
   try {
+    // Safety check: If match already completed with payout, don't refund but still reset lobby
+    if (lobby.current_match_id) {
+      const match = db.getMatch(lobby.current_match_id);
+      if (match && match.payout_tx_hash) {
+        console.log(`[REFUND] Skipping refund for lobby ${lobbyId} - match ${lobby.current_match_id} already paid out (tx: ${match.payout_tx_hash})`);
+        // Don't refund, but DO reset the lobby so it's available for new games
+        // (The normal cleanup path handles this, but this is a safety catch)
+        return { success: false, refunds: [], reason: 'match_already_paid' };
+      }
+    }
+
     const refunds = [];
     const playersToRefund = lobby.players.filter(p => !p.refunded_at);
 
