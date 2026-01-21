@@ -503,7 +503,7 @@ const Tutorial = (function () {
 
     // Draw showdown text
     if (showdownState && showdownState.showText) {
-      drawShowdownText(showdownState.textProgress);
+      drawShowdownText(showdownState.textProgress, animationFrame);
     }
 
     // Draw showdown scores
@@ -692,41 +692,122 @@ const Tutorial = (function () {
     }
   }
 
-  function drawShowdownText(progress) {
+  function drawShowdownText(progress, animationFrame) {
     ctx.save();
 
-    // Overlay
+    // Semi-transparent overlay
     ctx.fillStyle = `rgba(0, 0, 0, ${0.5 * progress})`;
     ctx.fillRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
-    // Scale
+    // Scale in effect
     const scale = 0.5 + progress * 0.5;
     ctx.translate(ARENA_WIDTH / 2, ARENA_HEIGHT / 2);
     ctx.scale(scale, scale);
 
-    // Shadow
+    // Shake effect (decreases as progress increases)
+    const shake = (1 - progress) * 10;
+    ctx.translate(
+      (Math.random() - 0.5) * shake,
+      (Math.random() - 0.5) * shake
+    );
+
+    // Text shadow for depth
     ctx.shadowColor = '#000000';
     ctx.shadowBlur = 20;
     ctx.shadowOffsetX = 5;
     ctx.shadowOffsetY = 5;
 
-    // Text
+    // Main text - blood red like "FINISH HIM"
     ctx.fillStyle = '#CC0000';
     ctx.font = 'bold 120px Impact, Arial Black, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('SHOWDOWN', 0, -40);
 
+    // Outline for that gritty effect
     ctx.strokeStyle = '#880000';
     ctx.lineWidth = 3;
     ctx.strokeText('SHOWDOWN', 0, -40);
 
-    // Subtitle
-    ctx.shadowBlur = 10;
-    ctx.font = 'bold 30px sans-serif';
-    ctx.fillStyle = '#FF69B4';
-    ctx.fillText('Collect 2 hearts to win!', 0, 55);
+    // Subtitle text - sparkling animated pink with hearts
+    const time = animationFrame / 60;
+    const sparkle = 0.7 + 0.3 * Math.sin(time * 8);
+    const hue = 330 + 20 * Math.sin(time * 3);
 
+    // Glowing neon effect
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.shadowBlur = 20 + 10 * Math.sin(time * 6);
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.font = 'bold 30px "Comic Sans MS", "Marker Felt", cursive';
+    ctx.textAlign = 'center';
+    const subtitleY = 55;
+    const text = 'Collect 2 hearts to win!';
+
+    // Draw glowing text with animated color
+    ctx.fillStyle = `hsl(${hue}, 100%, ${65 + 15 * sparkle}%)`;
+    ctx.fillText(text, 0, subtitleY);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.strokeText(text, 0, subtitleY);
+
+    // Draw mini hearts on each side
+    const textWidth = ctx.measureText(text).width;
+    const heartSize = 12;
+    const heartY = subtitleY - 4;
+    const heartPulse = 1 + 0.15 * Math.sin(time * 6);
+
+    // Left heart
+    ctx.save();
+    ctx.translate(-textWidth / 2 - 25, heartY);
+    ctx.scale(heartPulse, heartPulse);
+    drawMiniHeart(0, 0, heartSize, hue, sparkle);
+    ctx.restore();
+
+    // Right heart
+    ctx.save();
+    ctx.translate(textWidth / 2 + 25, heartY);
+    ctx.scale(heartPulse, heartPulse);
+    drawMiniHeart(0, 0, heartSize, hue, sparkle);
+    ctx.restore();
+
+    // Sparkles around the text
+    drawSparkles(-textWidth / 2 - 40, textWidth / 2 + 40, subtitleY - 15, subtitleY + 15, time);
+
+    ctx.restore();
+  }
+
+  function drawMiniHeart(x, y, size, hue, sparkle) {
+    ctx.save();
+    ctx.fillStyle = `hsl(${hue}, 100%, ${65 + 15 * sparkle}%)`;
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(x, y + size * 0.3);
+    ctx.bezierCurveTo(x, y, x - size, y, x - size, y + size * 0.3);
+    ctx.bezierCurveTo(x - size, y + size * 0.6, x, y + size, x, y + size);
+    ctx.bezierCurveTo(x, y + size, x + size, y + size * 0.6, x + size, y + size * 0.3);
+    ctx.bezierCurveTo(x + size, y, x, y, x, y + size * 0.3);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSparkles(minX, maxX, minY, maxY, time) {
+    ctx.save();
+    const sparkleCount = 6;
+    for (let i = 0; i < sparkleCount; i++) {
+      const phase = (time * 2 + i * 1.5) % 3;
+      if (phase < 1) {
+        const alpha = Math.sin(phase * Math.PI);
+        const sparkleX = minX + (maxX - minX) * ((i + 0.5) / sparkleCount);
+        const sparkleY = minY + (maxY - minY) * (0.5 + 0.4 * Math.sin(i * 2.1));
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`;
+        ctx.beginPath();
+        ctx.arc(sparkleX, sparkleY, 2 + alpha * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.restore();
   }
 
