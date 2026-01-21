@@ -256,14 +256,13 @@ body {
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: 6px;
-  padding: 0 30px;
+  padding: 4px 30px; /* Top/bottom padding for hover scale effect */
   flex: 1 1 0; /* Allow shrinking */
   max-width: 950px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
   min-height: 0; /* Critical for flexbox children to shrink */
-  overflow: hidden;
 }
 
 @media (max-width: 800px) {
@@ -271,7 +270,7 @@ body {
     grid-template-columns: repeat(2, 1fr);
     grid-template-rows: repeat(6, 1fr);
     gap: 8px;
-    padding: 0 16px 16px 16px;
+    padding: 4px 16px 16px 16px;
   }
 }
 
