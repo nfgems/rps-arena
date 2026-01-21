@@ -27,6 +27,10 @@ const UI = (function () {
   let spawnPosition = { x: 800, y: 450 }; // Default to center, updated by role assignment
   let cachedLobbies = []; // Cache lobby list for re-rendering when returning to lobby screen
 
+  // Lobby refund timer state
+  let lobbyTimeRemaining = null; // Time remaining in ms for refund countdown
+  let lobbyTimerInterval = null; // Interval ID for client-side countdown
+
   // Showdown mode state
   let showdownState = null; // { hearts: [], scores: {}, showText: bool, textProgress: number, freezeEndTime: number }
 
@@ -469,6 +473,9 @@ Expiration Time: ${expirationTime}`;
       lobbyCountdown.classList.add('hidden');
     }
 
+    // Stop the refund timer when match starts
+    stopLobbyTimer();
+
     showScreen('countdown');
 
     // Reset preview phase state
@@ -664,6 +671,7 @@ Expiration Time: ${expirationTime}`;
       showScreen('result');
 
       // Reset state
+      stopLobbyTimer();
       currentLobbyId = null;
       myRole = null;
       showdownState = null;
@@ -673,6 +681,7 @@ Expiration Time: ${expirationTime}`;
 
   function handleRefundProcessed(data) {
     alert(`Refund processed for ${data.reason}`);
+    stopLobbyTimer();
     showScreen('lobby');
     currentLobbyId = null;
   }
@@ -956,6 +965,46 @@ Expiration Time: ${expirationTime}`;
     }
   }
 
+  function updateTimerDisplay() {
+    const timerDisplay = document.getElementById('timeout-display');
+    if (!timerDisplay) return;
+
+    if (lobbyTimeRemaining !== null && lobbyTimeRemaining > 0) {
+      const minutes = Math.floor(lobbyTimeRemaining / 60000);
+      const seconds = Math.floor((lobbyTimeRemaining % 60000) / 1000);
+      timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')} until refund available`;
+    } else if (lobbyTimeRemaining !== null && lobbyTimeRemaining <= 0) {
+      timerDisplay.textContent = 'Refund available';
+      document.getElementById('refund-btn').classList.remove('hidden');
+      stopLobbyTimer();
+    }
+  }
+
+  function startLobbyTimer(timeRemaining) {
+    // Clear any existing interval
+    stopLobbyTimer();
+
+    // Store the time remaining
+    lobbyTimeRemaining = timeRemaining;
+
+    // Start client-side countdown (tick every second)
+    lobbyTimerInterval = setInterval(() => {
+      if (lobbyTimeRemaining > 0) {
+        lobbyTimeRemaining -= 1000;
+        updateTimerDisplay();
+      } else {
+        stopLobbyTimer();
+      }
+    }, 1000);
+  }
+
+  function stopLobbyTimer() {
+    if (lobbyTimerInterval) {
+      clearInterval(lobbyTimerInterval);
+      lobbyTimerInterval = null;
+    }
+  }
+
   function updateWaitingScreen(lobbyId, players, timeRemaining) {
     document.getElementById('current-lobby-id').textContent = lobbyId;
 
@@ -991,13 +1040,18 @@ Expiration Time: ${expirationTime}`;
     }
 
     if (timeRemaining !== null && timeRemaining > 0) {
-      const minutes = Math.floor(timeRemaining / 60000);
-      const seconds = Math.floor((timeRemaining % 60000) / 1000);
-      timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')} until refund available`;
+      // Sync the time remaining and start/restart the client-side countdown
+      lobbyTimeRemaining = timeRemaining;
+      updateTimerDisplay();
+      startLobbyTimer(timeRemaining);
     } else if (timeRemaining === 0) {
+      stopLobbyTimer();
+      lobbyTimeRemaining = 0;
       timerDisplay.textContent = 'Refund available';
       document.getElementById('refund-btn').classList.remove('hidden');
     } else {
+      stopLobbyTimer();
+      lobbyTimeRemaining = null;
       timerDisplay.textContent = `Waiting for players... ${players.length}/3`;
     }
   }
