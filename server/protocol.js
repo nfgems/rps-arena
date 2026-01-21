@@ -348,7 +348,7 @@ function createLobbyUpdate(lobbyId, players, status, timeRemaining, depositAddre
     type: ServerMessages.LOBBY_UPDATE,
     lobbyId,
     players: players.map(p => ({
-      id: p.id,
+      id: p.user_id,
       username: p.username || truncateAddress(p.wallet_address),
     })),
     status,

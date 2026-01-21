@@ -323,11 +323,13 @@ function registerConnection(lobbyId, userId, ws) {
 }
 
 /**
- * Remove a WebSocket connection and clean up player if no active match
+ * Remove a WebSocket connection from a lobby
  *
- * When a player disconnects before a match starts (status: waiting/ready),
- * we remove them from the lobby to free up the slot. They can still request
- * a refund via the timeout mechanism or by reconnecting.
+ * Players who have paid remain in the lobby even when disconnected - they can
+ * reconnect and resume their spot. Players are only removed from the lobby when:
+ * - They explicitly request a refund
+ * - The lobby timeout expires and refunds are processed
+ * - The match ends
  *
  * @param {number} lobbyId - Lobby ID
  * @param {string} userId - User's UUID
@@ -337,35 +339,10 @@ function removeConnection(lobbyId, userId) {
   if (!lobby) return;
 
   lobby.connections.delete(userId);
+  console.log(`[DISCONNECT] Player ${userId} disconnected from lobby ${lobbyId} (status: ${lobby.status})`);
 
-  // Only clean up player slot if lobby is not in an active match
-  // During in_progress, player stays in match even if disconnected
-  if (lobby.status === 'waiting' || lobby.status === 'ready') {
-    const playerIndex = lobby.players.findIndex(p => p.user_id === userId && !p.refunded_at);
-    if (playerIndex !== -1) {
-      console.log(`[DISCONNECT] Player ${userId} left lobby ${lobbyId} (status: ${lobby.status})`);
-
-      // Remove from in-memory lobby (DB record stays for refund eligibility)
-      lobby.players.splice(playerIndex, 1);
-
-      // Update lobby status based on remaining connected players
-      const remainingPlayers = lobby.players.filter(p => !p.refunded_at).length;
-
-      if (remainingPlayers === 0) {
-        // Lobby is now empty - reset it
-        lobby.status = 'empty';
-        lobby.first_join_at = null;
-        lobby.timeout_at = null;
-        db.resetLobby(lobbyId);
-        console.log(`[DISCONNECT] Lobby ${lobbyId} reset to empty`);
-      } else if (lobby.status === 'ready' && remainingPlayers < 3) {
-        // Was ready but now missing players
-        lobby.status = 'waiting';
-        db.updateLobbyStatus(lobbyId, 'waiting');
-        console.log(`[DISCONNECT] Lobby ${lobbyId} reverted to waiting (${remainingPlayers}/3)`);
-      }
-    }
-  }
+  // Player stays in lobby - they paid and can reconnect
+  // Only refund/removal mechanisms should remove players from the lobby
 }
 
 // ============================================
