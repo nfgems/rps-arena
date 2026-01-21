@@ -305,7 +305,7 @@ const Wallet = (function () {
 
     // Send transaction
     const tx = await usdc.transfer(recipientAddress, amountInUnits);
-    const receipt = await tx.wait();
+    const receipt = await tx.wait(3); // Wait for 3 confirmations (server requires MIN_CONFIRMATIONS = 3)
 
     return receipt.hash;
   }

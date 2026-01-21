@@ -386,7 +386,7 @@ Expiration Time: ${expirationTime}`;
       const depositAddress = document.getElementById('deposit-address').textContent;
       const txHash = await Wallet.sendUSDC(depositAddress, 1);
 
-      status.querySelector('span').textContent = 'Waiting for confirmation...';
+      status.querySelector('span').textContent = 'Waiting for 3 block confirmations (~6 sec)...';
 
       // Send to server (use pendingLobbyId, not currentLobbyId)
       Network.joinLobby(pendingLobbyId, txHash);
