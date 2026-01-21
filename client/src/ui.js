@@ -205,6 +205,14 @@ const UI = (function () {
       screens[screenName].classList.remove('hidden');
       currentScreen = screenName;
     }
+
+    // Hide footer during fullscreen game modes (tutorial, game, countdown)
+    const fullscreenModes = ['tutorial', 'game', 'countdown'];
+    if (fullscreenModes.includes(screenName)) {
+      document.body.classList.add('hide-footer');
+    } else {
+      document.body.classList.remove('hide-footer');
+    }
   }
 
   // ============================================

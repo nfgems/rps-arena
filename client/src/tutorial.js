@@ -382,6 +382,9 @@ const Tutorial = (function () {
     const tutorialScreen = document.getElementById('tutorial-screen');
     tutorialScreen.classList.remove('hidden');
 
+    // Hide footer during tutorial
+    document.body.classList.add('hide-footer');
+
     // Get canvas
     canvas = document.getElementById('tutorial-canvas');
     ctx = canvas.getContext('2d');
