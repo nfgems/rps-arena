@@ -175,7 +175,6 @@ body {
 
 /* Lobby Screen */
 #lobby-screen {
-  position: relative;
   overflow: hidden;
 }
 

@@ -875,6 +875,10 @@ const Tutorial = (function () {
 
           if (entity.id === player.id) {
             heartsCollectedByPlayer++;
+            // Trigger confetti immediately when player collects winning heart
+            if (heartsCollectedByPlayer >= 2 && typeof Confetti !== 'undefined' && Confetti.start) {
+              Confetti.start(3000);
+            }
           }
           break;
         }
