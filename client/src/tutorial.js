@@ -1295,10 +1295,10 @@ const Tutorial = (function () {
 
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 14px Arial';
-      ctx.textAlign = index === 0 ? 'left' : 'right';
+      ctx.textAlign = 'right';
       ctx.fillText(
         p.isLocal ? 'YOU' : p.role.toUpperCase(),
-        index === 0 ? x + barWidth - 10 : x + barWidth - 5,
+        x + barWidth - 10,
         y + barHeight / 2 + 5
       );
     });
