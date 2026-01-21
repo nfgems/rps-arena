@@ -424,10 +424,7 @@ const Tutorial = (function () {
         break;
 
       case BOT_BEHAVIOR.FLEE_SLOW:
-        const fleeTgt = getFleeTarget(bot, player);
-        bot.targetX = fleeTgt.x;
-        bot.targetY = fleeTgt.y;
-        moveTowardTarget(bot, bot.targetX, bot.targetY, 0.35);
+        fleeFromPlayer(bot, player, 0.4);
         break;
 
       case BOT_BEHAVIOR.FLEE_MEDIUM:
@@ -470,40 +467,60 @@ const Tutorial = (function () {
     }
   }
 
-  function getFleeTarget(bot, target) {
-    const minX = 250;
-    const maxX = ARENA_WIDTH - 250;
-    const minY = 200;
-    const maxY = ARENA_HEIGHT - 200;
-    const centerX = ARENA_WIDTH / 2;
-    const centerY = ARENA_HEIGHT / 2;
-
+  function fleeFromPlayer(bot, target, speedMultiplier) {
     const dx = bot.x - target.x;
     const dy = bot.y - target.y;
-    const distToTarget = Math.sqrt(dx * dx + dy * dy) || 1;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    if (distToTarget > 400) {
-      return { x: centerX, y: centerY };
+    // Base flee direction (away from player)
+    let fleeX = dx / dist;
+    let fleeY = dy / dist;
+
+    // Check if we're near arena edges and need to curve away
+    const edgeBuffer = 150;
+    const nearLeft = bot.x < edgeBuffer;
+    const nearRight = bot.x > ARENA_WIDTH - edgeBuffer;
+    const nearTop = bot.y < edgeBuffer;
+    const nearBottom = bot.y > ARENA_HEIGHT - edgeBuffer;
+
+    // Blend in perpendicular movement when near edges to curve smoothly
+    if (nearLeft || nearRight || nearTop || nearBottom) {
+      // Perpendicular direction (for curving)
+      const perpX = -fleeY;
+      const perpY = fleeX;
+
+      // Determine which way to curve based on position
+      let curveDir = 0;
+      if (nearLeft) curveDir = bot.y < ARENA_HEIGHT / 2 ? 1 : -1;
+      else if (nearRight) curveDir = bot.y < ARENA_HEIGHT / 2 ? -1 : 1;
+      else if (nearTop) curveDir = bot.x < ARENA_WIDTH / 2 ? -1 : 1;
+      else if (nearBottom) curveDir = bot.x < ARENA_WIDTH / 2 ? 1 : -1;
+
+      // Calculate how close to edge (0 = at buffer, 1 = at edge)
+      let edgeFactor = 0;
+      if (nearLeft) edgeFactor = 1 - bot.x / edgeBuffer;
+      else if (nearRight) edgeFactor = 1 - (ARENA_WIDTH - bot.x) / edgeBuffer;
+      else if (nearTop) edgeFactor = 1 - bot.y / edgeBuffer;
+      else if (nearBottom) edgeFactor = 1 - (ARENA_HEIGHT - bot.y) / edgeBuffer;
+
+      // Blend flee direction with curve direction based on edge proximity
+      fleeX = fleeX * (1 - edgeFactor * 0.8) + perpX * curveDir * edgeFactor * 0.8;
+      fleeY = fleeY * (1 - edgeFactor * 0.8) + perpY * curveDir * edgeFactor * 0.8;
+
+      // Re-normalize
+      const newDist = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
+      fleeX /= newDist;
+      fleeY /= newDist;
     }
 
-    const perpX = -dy / distToTarget;
-    const perpY = dx / distToTarget;
-    const fleeX = dx / distToTarget;
-    const fleeY = dy / distToTarget;
-    const arcDir = Math.sin(tick * 0.02) > 0 ? 1 : -1;
+    // Apply movement
+    const maxSpeed = (MAX_SPEED / TICK_RATE) * speedMultiplier;
+    bot.x += fleeX * maxSpeed;
+    bot.y += fleeY * maxSpeed;
 
-    let targetX = bot.x + (fleeX * 0.6 + perpX * arcDir * 0.4) * 150;
-    let targetY = bot.y + (fleeY * 0.6 + perpY * arcDir * 0.4) * 150;
-
-    if (targetX < minX || targetX > maxX || targetY < minY || targetY > maxY) {
-      targetX = bot.x * 0.7 + centerX * 0.3;
-      targetY = bot.y * 0.7 + centerY * 0.3;
-    }
-
-    return {
-      x: Math.max(minX, Math.min(maxX, targetX)),
-      y: Math.max(minY, Math.min(maxY, targetY)),
-    };
+    // Clamp to arena bounds
+    bot.x = Math.max(PLAYER_RADIUS, Math.min(ARENA_WIDTH - PLAYER_RADIUS, bot.x));
+    bot.y = Math.max(PLAYER_RADIUS, Math.min(ARENA_HEIGHT - PLAYER_RADIUS, bot.y));
   }
 
   function getAwayDirection(from, target) {
