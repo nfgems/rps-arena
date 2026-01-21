@@ -628,8 +628,17 @@ function setupShowdownIntro(tutorial) {
 function setupShowdownFreeze(tutorial) {
   // Freeze both players
   tutorial.player.frozen = true;
+  tutorial.player.dirX = 0;
+  tutorial.player.dirY = 0;
   const paperBot = tutorial.bots.find(b => b.role === 'paper');
   paperBot.frozen = true;
+
+  // Create showdown object with frozen state
+  tutorial.showdown = {
+    frozen: true,
+    hearts: [],
+    scores: {},
+  };
 
   // Send showdown start
   sendShowdownStart(tutorial);
@@ -981,6 +990,9 @@ function processInput(userId, input) {
   if (tutorial.waitingForInput && (input.dirX !== 0 || input.dirY !== 0)) {
     tutorial.waitingForInput = false;
   }
+
+  // Don't accept movement input while frozen
+  if (tutorial.player.frozen) return;
 
   tutorial.player.dirX = input.dirX || 0;
   tutorial.player.dirY = input.dirY || 0;

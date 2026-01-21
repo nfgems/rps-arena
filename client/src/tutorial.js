@@ -439,7 +439,7 @@ const Tutorial = (function () {
 
       // Client-side prediction for local player movement
       const localPlayer = players.find(p => p.isLocal);
-      if (localPlayer && localPlayer.alive && (direction.dx !== 0 || direction.dy !== 0)) {
+      if (localPlayer && localPlayer.alive && !localPlayer.frozen && (direction.dx !== 0 || direction.dy !== 0)) {
         // Normalize diagonal movement
         let moveX = direction.dx;
         let moveY = direction.dy;
