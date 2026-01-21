@@ -22,7 +22,7 @@ const USDC_ABI = [
 
 // Monitor configuration
 const MONITOR_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
-const LOOKBACK_BLOCKS = 100; // ~5 minutes on Base (2 second blocks)
+const LOOKBACK_BLOCKS = 10; // Max 10 blocks per query (free tier RPC limit)
 
 let monitorInterval = null;
 let isRunning = false;
