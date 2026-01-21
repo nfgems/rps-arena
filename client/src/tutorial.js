@@ -40,7 +40,6 @@ const Tutorial = (function () {
   // Tutorial progression
   const TUTORIAL_STEPS = {
     INTRO: 'intro',
-    ROLE_EXPLAIN: 'role_explain',
     MOVEMENT: 'movement',
     CHASE_TARGET: 'chase_target',
     ELIMINATION: 'elimination',
@@ -70,13 +69,8 @@ const Tutorial = (function () {
   const STEP_INSTRUCTIONS = {
     [TUTORIAL_STEPS.INTRO]: {
       title: 'Welcome to RPS Arena!',
-      text: 'This tutorial will teach you everything you need to know to compete.',
-      subtext: 'Press any movement key (WASD or Arrow Keys) to begin.',
-    },
-    [TUTORIAL_STEPS.ROLE_EXPLAIN]: {
-      title: 'Your Role: ROCK',
       text: 'You are ROCK (orange). Rock beats SCISSORS (green). But PAPER (blue) beats you!',
-      subtext: 'Remember: Chase GREEN, avoid BLUE. Press any key to continue.',
+      subtext: 'Chase GREEN, avoid BLUE. Press any movement key (WASD or Arrow Keys) to begin.',
     },
     [TUTORIAL_STEPS.MOVEMENT]: {
       title: 'Movement Controls',
@@ -562,12 +556,6 @@ const Tutorial = (function () {
     switch (currentStep) {
       case TUTORIAL_STEPS.INTRO:
         if (!waitingForInput) {
-          advanceToStep(TUTORIAL_STEPS.ROLE_EXPLAIN);
-        }
-        break;
-
-      case TUTORIAL_STEPS.ROLE_EXPLAIN:
-        if (!waitingForInput || ticksInStep > 150) {
           advanceToStep(TUTORIAL_STEPS.MOVEMENT);
         }
         break;
@@ -653,11 +641,7 @@ const Tutorial = (function () {
     stepStartTick = tick;
     waitingForInput = false;
 
-    if (
-      [TUTORIAL_STEPS.INTRO, TUTORIAL_STEPS.ROLE_EXPLAIN, TUTORIAL_STEPS.BEING_ELIMINATED].includes(
-        newStep
-      )
-    ) {
+    if ([TUTORIAL_STEPS.INTRO, TUTORIAL_STEPS.BEING_ELIMINATED].includes(newStep)) {
       waitingForInput = true;
     }
 

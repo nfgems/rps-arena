@@ -211,7 +211,7 @@ Sent each second during countdown.
 When `secondsRemaining` is 0, the game starts.
 
 ### SNAPSHOT
-Game state snapshot sent at 20 Hz during match.
+Game state snapshot sent at 30 Hz during match.
 
 ```json
 {
@@ -391,7 +391,7 @@ Sent when an error occurs.
 | Player Radius | 22 | Player collision radius |
 | Max Speed | 450 | Maximum player speed (pixels/second) |
 | Tick Rate | 30 | Server physics tick rate (Hz) |
-| Snapshot Rate | 20 | State broadcast rate (Hz) |
+| Snapshot Rate | 30 | State broadcast rate (Hz) |
 | Buy-in | 1 USDC | Entry fee per player |
 | Winner Payout | 2.4 USDC | Winner receives |
 | Treasury Cut | 0.6 USDC | Platform fee |
@@ -426,7 +426,7 @@ Client                          Server
 ```
 Client                          Server
   |-- INPUT ---------------------->|
-  |<----------- SNAPSHOT ----------|  (20 Hz)
+  |<----------- SNAPSHOT ----------|  (30 Hz)
   |-- INPUT ---------------------->|  (60 Hz)
   |<----------- SNAPSHOT ----------|
   |<--------- ELIMINATION ---------|

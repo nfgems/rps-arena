@@ -33,7 +33,7 @@
 | Match start | MATCH_STARTING received | | [ ] |
 | Role assignment | ROLE_ASSIGNMENT with valid role | | [ ] |
 | Countdown | 3, 2, 1, GO! sequence | | [ ] |
-| Gameplay | SNAPSHOT at ~20 Hz | | [ ] |
+| Gameplay | SNAPSHOT at ~30 Hz | | [ ] |
 | Match end | MATCH_END with winner | | [ ] |
 | Lobby reset | Status returns to "empty" | | [ ] |
 
@@ -102,7 +102,7 @@
 | CPU usage | < 80% | | [ ] |
 | Memory usage | < 512MB | | [ ] |
 | Latency (p95) | < 100ms | | [ ] |
-| Snapshot rate | ~50ms gap | | [ ] |
+| Snapshot rate | ~33ms gap | | [ ] |
 | Error rate | < 1% | | [ ] |
 
 **Result**: [ ] PASS / [ ] FAIL

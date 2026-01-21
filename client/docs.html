@@ -141,7 +141,7 @@
 
       <div class="stats-highlight">
         <div class="stat-box"><span class="value">30 Hz</span><span class="label">Physics Tick Rate</span></div>
-        <div class="stat-box"><span class="value">20 Hz</span><span class="label">Client Snapshot Rate</span></div>
+        <div class="stat-box"><span class="value">30 Hz</span><span class="label">Client Snapshot Rate</span></div>
         <div class="stat-box"><span class="value">3</span><span class="label">Players Per Match</span></div>
         <div class="stat-box"><span class="value">12</span><span class="label">Concurrent Lobbies</span></div>
         <div class="stat-box"><span class="value">1 USDC</span><span class="label">Entry Fee</span></div>
@@ -297,7 +297,7 @@
         <div class="spec-card">
           <h4>Timing</h4>
           <div class="spec-item"><span class="spec-label">Physics Tick</span><span class="spec-value">30 Hz (33ms)</span></div>
-          <div class="spec-item"><span class="spec-label">Client Snapshot</span><span class="spec-value">20 Hz (50ms)</span></div>
+          <div class="spec-item"><span class="spec-label">Client Snapshot</span><span class="spec-value">30 Hz (33ms)</span></div>
           <div class="spec-item"><span class="spec-label">Role Reveal</span><span class="spec-value">10 seconds</span></div>
           <div class="spec-item"><span class="spec-label">Preview Phase</span><span class="spec-value">3 seconds</span></div>
         </div>
@@ -503,7 +503,7 @@
           <h4>Server Authority</h4>
           <div class="spec-item"><span class="spec-label">Game State</span><span class="spec-value">Server-authoritative</span></div>
           <div class="spec-item"><span class="spec-label">Tick Rate</span><span class="spec-value">30 Hz</span></div>
-          <div class="spec-item"><span class="spec-label">Snapshot Rate</span><span class="spec-value">20 Hz</span></div>
+          <div class="spec-item"><span class="spec-label">Snapshot Rate</span><span class="spec-value">30 Hz</span></div>
           <div class="spec-item"><span class="spec-label">State Persistence</span><span class="spec-value">Every 5 ticks</span></div>
         </div>
         <div class="spec-card">
@@ -625,7 +625,7 @@
             <tr><td><code>COUNTDOWN</code></td><td>Countdown timer (10...0)</td></tr>
             <tr><td><code>PREVIEW_START</code></td><td>3-second preview phase begins (players see arena)</td></tr>
             <tr><td><code>GAME_START</code></td><td>Preview ended, movement enabled</td></tr>
-            <tr><td><code>SNAPSHOT</code></td><td>Game state update (20 Hz) with all player positions</td></tr>
+            <tr><td><code>SNAPSHOT</code></td><td>Game state update (30 Hz) with all player positions</td></tr>
             <tr><td><code>ELIMINATION</code></td><td>Player eliminated event</td></tr>
             <tr><td><code>BOUNCE</code></td><td>Neutral collision bounce (showdown)</td></tr>
             <tr><td><code>SHOWDOWN_START</code></td><td>2 players remain, heart positions sent</td></tr>

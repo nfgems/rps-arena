@@ -169,7 +169,7 @@ async function createPlayer(playerId) {
 
           case 'SNAPSHOT':
             metrics.snapshotsReceived++;
-            // Track snapshot timing to verify 20 Hz
+            // Track snapshot timing to verify 30 Hz
             const now = Date.now();
             if (metrics.lastSnapshotTime[playerId]) {
               const gap = now - metrics.lastSnapshotTime[playerId];
@@ -251,7 +251,7 @@ function printMetrics() {
   console.log(`Messages Sent: ${metrics.messagesSent} | Received: ${metrics.messagesReceived}`);
   console.log(`Errors: ${metrics.errors}`);
   console.log(`Latency (ms): min=${latencyStats.min} avg=${latencyStats.avg} p95=${latencyStats.p95} max=${latencyStats.max}`);
-  console.log(`Snapshots: ${metrics.snapshotsReceived} | Gap avg=${snapshotStats.avg}ms (target: 50ms for 20Hz)`);
+  console.log(`Snapshots: ${metrics.snapshotsReceived} | Gap avg=${snapshotStats.avg}ms (target: 33ms for 30Hz)`);
   console.log(`Throughput: ${Math.round(metrics.messagesSent / elapsed)} msg/s sent, ${Math.round(metrics.messagesReceived / elapsed)} msg/s received`);
   console.log('-------------------------\n');
 }
@@ -362,13 +362,13 @@ async function runLoadTest() {
     results.push({ test: 'Latency (p95 < 100ms)', status: 'WARN', detail: `${latencyStats.p95}ms` });
   }
 
-  // Check snapshot rate (target 50ms = 20Hz)
-  if (snapshotStats.avg > 0 && snapshotStats.avg < 100) {
-    results.push({ test: 'Snapshot Rate (~20Hz)', status: 'PASS', detail: `${snapshotStats.avg}ms avg gap` });
+  // Check snapshot rate (target 33ms = 30Hz)
+  if (snapshotStats.avg > 0 && snapshotStats.avg < 70) {
+    results.push({ test: 'Snapshot Rate (~30Hz)', status: 'PASS', detail: `${snapshotStats.avg}ms avg gap` });
   } else if (snapshotStats.avg === 0) {
     results.push({ test: 'Snapshot Rate', status: 'N/A', detail: 'No matches running' });
   } else {
-    results.push({ test: 'Snapshot Rate (~20Hz)', status: 'WARN', detail: `${snapshotStats.avg}ms avg gap` });
+    results.push({ test: 'Snapshot Rate (~30Hz)', status: 'WARN', detail: `${snapshotStats.avg}ms avg gap` });
   }
 
   // Check error rate

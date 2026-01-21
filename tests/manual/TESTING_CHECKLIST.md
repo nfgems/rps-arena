@@ -45,7 +45,7 @@ curl http://localhost:3001/api/dev-mode  # Should return devMode: true
 | 8 | Wait for match start | MATCH_STARTING message received | [ ] |
 | 9 | Verify role assignment | ROLE_ASSIGNMENT with role + spawn position | [ ] |
 | 10 | Verify countdown | COUNTDOWN: 3, 2, 1, 0 | [ ] |
-| 11 | Game starts | Player can move, SNAPSHOT at ~20Hz | [ ] |
+| 11 | Game starts | Player can move, SNAPSHOT at ~30Hz | [ ] |
 | 12 | Play until end | MATCH_END with winner + payout info | [ ] |
 | 13 | Verify lobby reset | Lobby status back to "empty" | [ ] |
 
@@ -222,7 +222,7 @@ netstat -an | Select-String "3001" | Measure-Object
 | 1 | Start 10 matches simultaneously | 10 active game loops | [ ] |
 | 2 | Monitor tick timing | ~33ms between ticks (30 Hz) | [ ] |
 | 3 | Check for stalls | No ticks > 100ms apart | [ ] |
-| 4 | Verify snapshots | 20 Hz snapshot rate maintained | [ ] |
+| 4 | Verify snapshots | 30 Hz snapshot rate maintained | [ ] |
 
 ---
 
