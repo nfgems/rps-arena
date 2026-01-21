@@ -557,14 +557,7 @@ body {
 }
 
 .game-ping {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.5);
-  background: rgba(255, 255, 255, 0.8);
-  padding: 4px 8px;
-  border-radius: 4px;
+  display: none; /* Ping is now rendered directly on the game canvas */
 }
 
 /* Get Ready Overlay (3-second preview phase) */

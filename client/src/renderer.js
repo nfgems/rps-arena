@@ -33,6 +33,9 @@ const Renderer = (function () {
   let previewMode = false;
   let previewPlayerId = null;
 
+  // Current ping value for display
+  let currentPing = null;
+
   /**
    * Initialize renderer with a canvas element
    * @param {HTMLCanvasElement} canvasElement - Canvas element to render to
@@ -680,6 +683,32 @@ const Renderer = (function () {
         );
       }
     }
+
+    // Draw ping display
+    drawPing();
+  }
+
+  /**
+   * Draw ping display at bottom center of canvas
+   */
+  function drawPing() {
+    if (currentPing === null) return;
+
+    ctx.save();
+    ctx.font = '11px Arial';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`Ping: ${currentPing}ms`, ARENA_WIDTH / 2, ARENA_HEIGHT - 8);
+    ctx.restore();
+  }
+
+  /**
+   * Update the current ping value
+   * @param {number} ping - Ping in milliseconds
+   */
+  function setPing(ping) {
+    currentPing = ping;
   }
 
   /**
@@ -803,6 +832,7 @@ const Renderer = (function () {
     drawShowdownScores,
     drawRoleIconOnCanvas,
     setPreviewMode,
+    setPing,
     destroy,
     ARENA_WIDTH,
     ARENA_HEIGHT,

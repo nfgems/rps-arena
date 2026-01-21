@@ -683,8 +683,12 @@ Expiration Time: ${expirationTime}`;
   }
 
   function handlePingUpdate(ping) {
-    document.getElementById('ping-value').textContent = ping;
-    document.getElementById('game-ping-value').textContent = ping;
+    const lobbyPing = document.getElementById('ping-value');
+    if (lobbyPing) lobbyPing.textContent = ping;
+    // Update renderer's ping for in-game canvas display
+    if (typeof Renderer !== 'undefined' && Renderer.setPing) {
+      Renderer.setPing(ping);
+    }
   }
 
   function handlePlayerDisconnect(data) {
