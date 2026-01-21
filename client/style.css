@@ -295,7 +295,7 @@ body {
 .lobby-item:hover {
   border-color: var(--accent);
   background: rgba(22, 33, 62, 0.95);
-  transform: translateY(-3px);
+  transform: scale(1.02);
   box-shadow: 0 8px 30px rgba(233, 69, 96, 0.2);
 }
 
