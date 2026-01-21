@@ -34,7 +34,11 @@
       "Bash(pkill:*)",
       "Bash(nslookup:*)",
       "Bash(npx eslint:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(for f in client/src/*.js server/*.js)",
+      "Bash(do wc -l \"$f\")",
+      "Bash(done)",
+      "Read(//c/Users/evank/OneDrive/Documents/RPS-ARENA/**)"
     ]
   }
 }

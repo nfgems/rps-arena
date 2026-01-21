@@ -355,7 +355,7 @@ body {
 
 .ping-display {
   position: fixed;
-  bottom: 20px;
+  bottom: 60px; /* Above footer (45px height + spacing) */
   right: 24px;
   font-size: 14px;
   color: var(--text-secondary);
@@ -364,7 +364,7 @@ body {
   padding: 8px 16px;
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 50;
+  z-index: 150; /* Above footer (z-index: 100) */
 }
 
 /* Waiting Screen */
