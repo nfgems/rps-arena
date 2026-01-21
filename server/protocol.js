@@ -53,7 +53,7 @@ const ErrorCodes = {
   ALREADY_IN_LOBBY: { code: 2003, message: 'Player is already in a lobby' },
   LOBBY_TIMEOUT: { code: 2004, message: 'Lobby timeout expired, cannot join' },
   PAYMENT_NOT_CONFIRMED: { code: 2005, message: 'Payment transaction not found or not confirmed' },
-  REFUND_NOT_AVAILABLE: { code: 2006, message: 'Refund only available after 1-hour timeout' },
+  REFUND_NOT_AVAILABLE: { code: 2006, message: 'Refund only available after 30-minute timeout' },
   NOT_IN_LOBBY: { code: 2007, message: 'Player not in this lobby' },
   PAYMENT_FAILED: { code: 3001, message: 'Buy-in payment failed' },
   INSUFFICIENT_BALANCE: { code: 3002, message: 'Wallet has insufficient USDC' },
