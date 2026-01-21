@@ -288,8 +288,11 @@ const Wallet = (function () {
 
   /**
    * Send USDC payment to a recipient
+   * @param {string} recipientAddress - Address to send USDC to
+   * @param {number} amount - Amount in USDC
+   * @param {function} onProgress - Optional callback for progress updates
    */
-  async function sendUSDC(recipientAddress, amount) {
+  async function sendUSDC(recipientAddress, amount, onProgress) {
     if (!signer) {
       throw new Error('Wallet not connected');
     }
@@ -305,6 +308,12 @@ const Wallet = (function () {
 
     // Send transaction
     const tx = await usdc.transfer(recipientAddress, amountInUnits);
+
+    // Notify that transaction was sent and is awaiting confirmations
+    if (onProgress) {
+      onProgress('confirming', tx.hash);
+    }
+
     const receipt = await tx.wait(3); // Wait for 3 confirmations (server requires MIN_CONFIRMATIONS = 3)
 
     return receipt.hash;

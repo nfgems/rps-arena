@@ -21,6 +21,17 @@ const refundAttempts = new Map();
 const MAX_REFUND_ATTEMPTS = 5;
 const REFUND_ATTEMPT_RESET_MS = 60 * 60 * 1000; // Reset attempts after 1 hour
 
+// Callback for broadcasting lobby list updates (set by index.js)
+let onLobbyListChanged = null;
+
+/**
+ * Register a callback to be called when lobby list changes
+ * @param {Function} callback - Function to call when lobbies change
+ */
+function setLobbyListChangedCallback(callback) {
+  onLobbyListChanged = callback;
+}
+
 // ============================================
 // Initialization
 // ============================================
@@ -482,13 +493,13 @@ async function processLobbyRefund(lobbyId, reason) {
   await acquireLobbyLock(lobbyId);
 
   try {
-    // Safety check: If match already completed with payout, don't refund but still reset lobby
+    // Safety check: If match already completed with payout, don't refund
     if (lobby.current_match_id) {
       const match = db.getMatch(lobby.current_match_id);
       if (match && match.payout_tx_hash) {
         console.log(`[REFUND] Skipping refund for lobby ${lobbyId} - match ${lobby.current_match_id} already paid out (tx: ${match.payout_tx_hash})`);
-        // Don't refund, but DO reset the lobby so it's available for new games
-        // (The normal cleanup path handles this, but this is a safety catch)
+        // Don't refund - the normal endMatch cleanup path will reset the lobby
+        // We still release the lock via finally block
         return { success: false, refunds: [], reason: 'match_already_paid' };
       }
     }
@@ -599,6 +610,11 @@ function resetLobby(lobbyId) {
   lobby.connections.clear();
 
   console.log(`Lobby ${lobbyId} reset to empty`);
+
+  // Notify clients that lobby list has changed
+  if (onLobbyListChanged) {
+    onLobbyListChanged();
+  }
 }
 
 /**
@@ -780,4 +796,5 @@ module.exports = {
   broadcastToLobby,
   acquireLobbyLock,
   releaseLobbyLock,
+  setLobbyListChangedCallback,
 };

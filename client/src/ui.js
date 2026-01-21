@@ -388,9 +388,12 @@ Expiration Time: ${expirationTime}`;
       status.querySelector('span').textContent = 'Sending transaction...';
 
       const depositAddress = document.getElementById('deposit-address').textContent;
-      const txHash = await Wallet.sendUSDC(depositAddress, 1);
-
-      status.querySelector('span').textContent = 'Waiting for 3 block confirmations (~6 sec)...';
+      const txHash = await Wallet.sendUSDC(depositAddress, 1, (progressType, hash) => {
+        if (progressType === 'confirming') {
+          status.querySelector('span').textContent =
+            'Transaction sent! Please allow 3 block confirmations (~6 sec). You will be automatically added to the lobby.';
+        }
+      });
 
       // Send to server (use pendingLobbyId, not currentLobbyId)
       Network.joinLobby(pendingLobbyId, txHash);
@@ -447,6 +450,9 @@ Expiration Time: ${expirationTime}`;
 
     // Only update if we're in this lobby and on the waiting screen
     if (currentLobbyId !== lobbyId) return;
+
+    // Stop the refund timer since match is starting
+    stopLobbyTimer();
 
     // Update the lobby countdown display
     const countdownDisplay = document.getElementById('lobby-countdown');
@@ -1044,12 +1050,14 @@ Expiration Time: ${expirationTime}`;
       lobbyTimeRemaining = timeRemaining;
       updateTimerDisplay();
       startLobbyTimer(timeRemaining);
-    } else if (timeRemaining === 0) {
+    } else if (timeRemaining !== null && timeRemaining <= 0) {
+      // Timer expired - refund available
       stopLobbyTimer();
       lobbyTimeRemaining = 0;
       timerDisplay.textContent = 'Refund available';
       document.getElementById('refund-btn').classList.remove('hidden');
     } else {
+      // timeRemaining is null - no timer info yet
       stopLobbyTimer();
       lobbyTimeRemaining = null;
       timerDisplay.textContent = `Waiting for players... ${players.length}/3`;

@@ -1051,6 +1051,7 @@ async function voidMatch(matchId, reason, force = false) {
   setTimeout(() => {
     activeMatches.delete(matchId);
     matchTickErrors.delete(matchId);
+    lobby.resetLobby(match.lobbyId);
   }, 5000);
 
   console.log(`Match ${matchId} voided. Reason: ${reason}`);

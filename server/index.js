@@ -1041,6 +1041,9 @@ async function initialize() {
   // Initialize lobbies (after recovery to ensure lobbies are reset)
   await lobby.initializeLobbies();
 
+  // Register callback for lobby list changes (so clients get updated when lobbies reset)
+  lobby.setLobbyListChangedCallback(broadcastLobbyList);
+
   // Resume countdowns for any lobbies that are in 'ready' status after server restart
   // This handles the case where the server crashed during a lobby countdown
   const readyLobbies = lobby.getLobbyList().filter(l => l.status === 'ready' && l.playerCount === 3);
