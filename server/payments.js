@@ -689,20 +689,28 @@ async function getEthBalance(address) {
  *
  * @param {string} lobbyAddress - Lobby wallet address to check
  * @param {Date|string} matchStartTime - When the match started (to filter old transfers)
- * @param {number} lookbackBlocks - How many blocks to look back (default 1000 ~= 30 min on Base)
+ * @param {number} lookbackBlocks - How many blocks to look back (default 300 ~= 10 min on Base)
  * @returns {Promise<{payoutDetected: boolean, transfers: Array}>}
  */
-async function checkRecentPayoutFromLobby(lobbyAddress, matchStartTime = null, lookbackBlocks = 1000) {
+async function checkRecentPayoutFromLobby(lobbyAddress, matchStartTime = null, lookbackBlocks = 300) {
   try {
     const provider = getProvider();
     const usdc = getUsdcContract();
 
     const currentBlock = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, currentBlock - lookbackBlocks);
+    const startBlock = Math.max(0, currentBlock - lookbackBlocks);
 
     // Query Transfer events FROM the lobby wallet
+    // Note: Free tier RPC limits eth_getLogs to 10 blocks, so we chunk the query
     const filter = usdc.filters.Transfer(lobbyAddress, null);
-    const events = await usdc.queryFilter(filter, fromBlock, currentBlock);
+    const MAX_BLOCK_RANGE = 10;
+    const events = [];
+
+    for (let fromBlock = startBlock; fromBlock <= currentBlock; fromBlock += MAX_BLOCK_RANGE) {
+      const toBlock = Math.min(fromBlock + MAX_BLOCK_RANGE - 1, currentBlock);
+      const chunkEvents = await usdc.queryFilter(filter, fromBlock, toBlock);
+      events.push(...chunkEvents);
+    }
 
     // Parse transfer amounts and get block timestamps
     const transfers = [];

@@ -102,7 +102,8 @@ async function checkLobbyDeposits(lobbyId, depositAddress) {
 
   const currentBlock = await provider.getBlockNumber();
   const lastBlock = lastProcessedBlock.get(lobbyId) || (currentBlock - LOOKBACK_BLOCKS);
-  const fromBlock = Math.max(lastBlock + 1, currentBlock - LOOKBACK_BLOCKS);
+  // Note: block range is inclusive, so for 10 block max we need currentBlock - 9
+  const fromBlock = Math.max(lastBlock + 1, currentBlock - (LOOKBACK_BLOCKS - 1));
 
   if (fromBlock > currentBlock) {
     return; // No new blocks to check
