@@ -102,7 +102,7 @@ async function checkLobbyDeposits(lobbyId, depositAddress) {
 
   const currentBlock = await provider.getBlockNumber();
   const lastProcessed = lastProcessedBlock.get(lobbyId);
-  // Block range is inclusive: for max 10 blocks, query [currentBlock - 9, currentBlock]
+  // Block range is inclusive: for max 10 blocks, query [fromBlock, toBlock]
   const fromBlock = lastProcessed !== undefined
     ? lastProcessed + 1  // Continue from where we left off
     : currentBlock - LOOKBACK_BLOCKS;  // First run: look back 9 blocks (10 total)
@@ -111,12 +111,15 @@ async function checkLobbyDeposits(lobbyId, depositAddress) {
     return; // No new blocks to check
   }
 
+  // Cap toBlock to ensure we never exceed 10 block range (free tier RPC limit)
+  const toBlock = Math.min(currentBlock, fromBlock + LOOKBACK_BLOCKS);
+
   // Query Transfer events TO the lobby deposit address
   const filter = usdc.filters.Transfer(null, depositAddress);
-  const events = await usdc.queryFilter(filter, fromBlock, currentBlock);
+  const events = await usdc.queryFilter(filter, fromBlock, toBlock);
 
-  // Update last processed block
-  lastProcessedBlock.set(lobbyId, currentBlock);
+  // Update last processed block (use toBlock, not currentBlock, in case we capped the range)
+  lastProcessedBlock.set(lobbyId, toBlock);
 
   if (events.length === 0) {
     return;
