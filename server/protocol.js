@@ -33,9 +33,6 @@ const ServerMessages = {
   MATCH_END: 'MATCH_END',
   PONG: 'PONG',
   ERROR: 'ERROR',
-  PLAYER_DISCONNECT: 'PLAYER_DISCONNECT',
-  PLAYER_RECONNECT: 'PLAYER_RECONNECT',
-  RECONNECT_STATE: 'RECONNECT_STATE',
   TOKEN_UPDATE: 'TOKEN_UPDATE',
   SHOWDOWN_START: 'SHOWDOWN_START',
   SHOWDOWN_READY: 'SHOWDOWN_READY',
@@ -467,39 +464,6 @@ function createError(errorKey) {
   });
 }
 
-function createPlayerDisconnect(playerId, graceRemaining) {
-  return JSON.stringify({
-    type: ServerMessages.PLAYER_DISCONNECT,
-    playerId,
-    graceRemaining, // seconds until auto-elimination
-  });
-}
-
-function createPlayerReconnect(playerId) {
-  return JSON.stringify({
-    type: ServerMessages.PLAYER_RECONNECT,
-    playerId,
-  });
-}
-
-function createReconnectState(matchId, role, tick, players, timeRemaining) {
-  return JSON.stringify({
-    type: ServerMessages.RECONNECT_STATE,
-    matchId,
-    role,
-    tick,
-    players: players.map(p => ({
-      id: p.id,
-      x: Math.round(p.x * 100) / 100,
-      y: Math.round(p.y * 100) / 100,
-      alive: p.alive,
-      role: p.role,
-      connected: p.connected,
-    })),
-    timeRemaining,
-  });
-}
-
 /**
  * Create token update message (sent after token rotation)
  * Client should update stored token immediately
@@ -608,9 +572,6 @@ module.exports = {
   createMatchEnd,
   createPong,
   createError,
-  createPlayerDisconnect,
-  createPlayerReconnect,
-  createReconnectState,
   createTokenUpdate,
   createShowdownStart,
   createShowdownReady,

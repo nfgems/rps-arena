@@ -186,9 +186,6 @@ const UI = (function () {
     Network.addEventListener('REFUND_PROCESSED', handleRefundProcessed);
     Network.addEventListener('ERROR', handleError);
     Network.addEventListener('pingUpdate', handlePingUpdate);
-    Network.addEventListener('PLAYER_DISCONNECT', handlePlayerDisconnect);
-    Network.addEventListener('PLAYER_RECONNECT', handlePlayerReconnect);
-    Network.addEventListener('RECONNECT_STATE', handleReconnectState);
     Network.addEventListener('SHOWDOWN_START', handleShowdownStart);
     Network.addEventListener('SHOWDOWN_READY', handleShowdownReady);
     Network.addEventListener('HEART_CAPTURED', handleHeartCaptured);
@@ -707,61 +704,6 @@ Expiration Time: ${expirationTime}`;
     // Update renderer's ping for in-game canvas display
     if (typeof Renderer !== 'undefined' && Renderer.setPing) {
       Renderer.setPing(ping);
-    }
-  }
-
-  function handlePlayerDisconnect(data) {
-    // Another player disconnected - show visual indicator
-    const playerId = data.playerId;
-    const graceRemaining = data.graceRemaining;
-
-    console.log(`Player ${playerId} disconnected, ${graceRemaining}s grace period`);
-
-    // Update interpolation to mark player as disconnected (for visual indicator)
-    Interpolation.markPlayerDisconnected(playerId, graceRemaining);
-  }
-
-  function handlePlayerReconnect(data) {
-    // Another player reconnected
-    const playerId = data.playerId;
-
-    console.log(`Player ${playerId} reconnected`);
-
-    // Update interpolation to mark player as connected
-    Interpolation.markPlayerReconnected(playerId);
-  }
-
-  function handleReconnectState(data) {
-    // We reconnected to an in-progress match - restore game state
-    console.log('Reconnected to match:', data.matchId);
-
-    myRole = data.role;
-
-    // Update role display
-    document.getElementById('role-display').textContent = myRole.toUpperCase();
-    document.getElementById('role-display').style.color = roleColors[myRole] || '#ffffff';
-
-    // Initialize game systems if not already running
-    if (currentScreen !== 'game') {
-      showScreen('game');
-      Renderer.init(document.getElementById('game-canvas'));
-      Input.init(document.getElementById('game-canvas'));
-      Interpolation.init();
-      Input.startSending();
-      startGameLoop();
-    }
-
-    // Apply the reconnect snapshot
-    Interpolation.onSnapshot({
-      tick: data.tick,
-      players: data.players,
-    });
-
-    // Mark disconnected players
-    for (const player of data.players) {
-      if (!player.connected && player.alive) {
-        Interpolation.markPlayerDisconnected(player.id, 0);
-      }
     }
   }
 

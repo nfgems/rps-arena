@@ -94,10 +94,10 @@ const Renderer = (function () {
 
   /**
    * Draw a player token on the canvas
-   * @param {{x: number, y: number, role: string, alive: boolean, isLocal: boolean, disconnected: boolean, id: string}} player - Player data
+   * @param {{x: number, y: number, role: string, alive: boolean, isLocal: boolean, id: string}} player - Player data
    */
   function drawPlayer(player) {
-    const { x, y, role, alive, isLocal, disconnected, id } = player;
+    const { x, y, role, alive, isLocal, id } = player;
 
     if (!alive) return;
 
@@ -129,13 +129,8 @@ const Renderer = (function () {
     ctx.ellipse(3, 5, PLAYER_RADIUS, PLAYER_RADIUS * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Draw main circle (faded if disconnected)
+    // Draw main circle
     const baseColor = COLORS[role];
-    if (disconnected) {
-      // Pulse opacity for disconnected players
-      const alpha = 0.4 + Math.sin(time * 4) * 0.2;
-      ctx.globalAlpha = alpha;
-    }
     ctx.fillStyle = baseColor;
     ctx.beginPath();
     ctx.arc(0, 0, PLAYER_RADIUS, 0, Math.PI * 2);
@@ -148,16 +143,6 @@ const Renderer = (function () {
 
     // Draw role icon
     drawRoleIcon(role, time);
-
-    // Draw disconnect indicator
-    if (disconnected) {
-      ctx.globalAlpha = 1;
-      // Draw WiFi-off icon or "DC" text above player
-      ctx.fillStyle = '#ff4444';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('DC', 0, -PLAYER_RADIUS - 8);
-    }
 
     // Draw "YOU" label above local player during preview
     if (isPreviewHighlight) {

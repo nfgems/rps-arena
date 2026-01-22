@@ -21,9 +21,6 @@ const Interpolation = (function () {
   // Callback when position is first initialized
   let onPositionInitializedCallback = null;
 
-  // Track disconnected players (playerId -> {disconnectedAt, graceRemaining})
-  const disconnectedPlayers = new Map();
-
   /**
    * Set the local player ID for special handling (client-side prediction)
    * @param {string} playerId - Local player's user ID
@@ -162,7 +159,7 @@ const Interpolation = (function () {
 
   /**
    * Get all players with interpolated positions
-   * @returns {Array<{id: string, role: string, alive: boolean, x: number, y: number, isLocal: boolean, disconnected: boolean, graceRemaining: number}>}
+   * @returns {Array<{id: string, role: string, alive: boolean, x: number, y: number, isLocal: boolean}>}
    */
   function getPlayers() {
     if (!currentSnapshot) return [];
@@ -170,7 +167,6 @@ const Interpolation = (function () {
     const result = currentSnapshot.players.map(player => {
       const pos = getPosition(player.id);
       const isLocal = player.id === localPlayerId;
-      const disconnectInfo = disconnectedPlayers.get(player.id);
 
       return {
         id: player.id,
@@ -179,32 +175,10 @@ const Interpolation = (function () {
         x: pos ? pos.x : player.x,
         y: pos ? pos.y : player.y,
         isLocal: isLocal,
-        disconnected: disconnectInfo ? true : false,
-        graceRemaining: disconnectInfo ? disconnectInfo.graceRemaining : 0,
       };
     });
 
     return result;
-  }
-
-  /**
-   * Mark a player as disconnected (for visual indicator)
-   * @param {string} playerId - Player ID
-   * @param {number} graceRemaining - Seconds remaining before auto-elimination
-   */
-  function markPlayerDisconnected(playerId, graceRemaining) {
-    disconnectedPlayers.set(playerId, {
-      disconnectedAt: performance.now(),
-      graceRemaining: graceRemaining,
-    });
-  }
-
-  /**
-   * Mark a player as reconnected
-   * @param {string} playerId - Player ID
-   */
-  function markPlayerReconnected(playerId) {
-    disconnectedPlayers.delete(playerId);
   }
 
   /**
@@ -225,7 +199,6 @@ const Interpolation = (function () {
     localPlayerPosition = { x: 0, y: 0 };
     localPositionInitialized = false;
     onPositionInitializedCallback = null;
-    disconnectedPlayers.clear();
   }
 
   /**
@@ -246,7 +219,5 @@ const Interpolation = (function () {
     getPlayers,
     getCurrentTick,
     reset,
-    markPlayerDisconnected,
-    markPlayerReconnected,
   };
 })();

@@ -642,7 +642,6 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
     let authenticated = false;
     let currentLobbyId = null;
     let currentMatchId = null;
-    let currentSessionToken = null; // Track for token rotation on reconnect
     let pingInterval = null;
     let lastPingTime = null;
 
@@ -781,7 +780,6 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
 
       userId = authResult.user.id;
       authenticated = true;
-      currentSessionToken = sessionToken; // Store for token rotation on reconnect
 
       // Send welcome
       ws.send(protocol.createWelcome(userId, Date.now()));
@@ -816,23 +814,10 @@ function setupWebSocketHandler(wsServer, isAdminPort) {
           ws.send(protocol.createLobbyCountdown(lobbyData.id, activeCountdown.secondsRemaining));
         }
 
-        // Check if in active match - use reconnect handler
+        // Check if in active match - player was eliminated when they disconnected
         if (lobbyData.current_match_id) {
-          currentMatchId = lobbyData.current_match_id;
-
-          // HIGH-2 FIX: Immediately clear grace period to prevent race with tick
-          // This prevents elimination if reconnect arrives just as grace period expires
-          match.clearGracePeriod(currentMatchId, userId);
-
-          const reconnectedMatch = match.handleReconnect(currentMatchId, userId, ws, currentSessionToken);
-
-          if (reconnectedMatch) {
-            console.log(`[RECONNECT] User ${userId} reconnected to match ${currentMatchId}`);
-          } else {
-            // Match may have ended or player eliminated
-            console.log(`[RECONNECT] User ${userId} could not reconnect to match ${currentMatchId}`);
-            currentMatchId = null;
-          }
+          // Player already eliminated on disconnect, just log
+          console.log(`[MATCH] User ${userId} rejoined lobby but was already eliminated from match ${lobbyData.current_match_id}`);
         }
       }
 
