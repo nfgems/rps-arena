@@ -22,7 +22,7 @@ const USDC_ABI = [
 
 // Monitor configuration
 const MONITOR_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
-const LOOKBACK_BLOCKS = 10; // Max 10 blocks per query (free tier RPC limit)
+const LOOKBACK_BLOCKS = 9; // Query 9 blocks back = 10 blocks total (inclusive range, free tier RPC limit)
 
 let monitorInterval = null;
 let isRunning = false;
@@ -101,9 +101,11 @@ async function checkLobbyDeposits(lobbyId, depositAddress) {
   const usdc = new ethers.Contract(usdcAddress, USDC_ABI, provider);
 
   const currentBlock = await provider.getBlockNumber();
-  const lastBlock = lastProcessedBlock.get(lobbyId) || (currentBlock - LOOKBACK_BLOCKS);
-  // Note: block range is inclusive, so for 10 block max we need currentBlock - 9
-  const fromBlock = Math.max(lastBlock + 1, currentBlock - (LOOKBACK_BLOCKS - 1));
+  const lastProcessed = lastProcessedBlock.get(lobbyId);
+  // Block range is inclusive: for max 10 blocks, query [currentBlock - 9, currentBlock]
+  const fromBlock = lastProcessed !== undefined
+    ? lastProcessed + 1  // Continue from where we left off
+    : currentBlock - LOOKBACK_BLOCKS;  // First run: look back 9 blocks (10 total)
 
   if (fromBlock > currentBlock) {
     return; // No new blocks to check
