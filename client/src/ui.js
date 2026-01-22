@@ -476,6 +476,9 @@ Expiration Time: ${expirationTime}`;
   // Track whether we've transitioned to tutorial screen
   let inTutorialPhase = false;
 
+  // Store role data for deferred rendering when tutorial screen becomes visible
+  let pendingRoleData = null;
+
   function handleMatchStarting(data) {
     // Stop the refund timer when match starts
     stopLobbyTimer();
@@ -483,6 +486,7 @@ Expiration Time: ${expirationTime}`;
     // Reset phase states
     inPreviewPhase = false;
     inTutorialPhase = false;
+    pendingRoleData = null;
 
     // Show the lobby countdown display for initial countdown (20-11 seconds)
     const countdownDisplay = document.getElementById('lobby-countdown');
@@ -506,6 +510,20 @@ Expiration Time: ${expirationTime}`;
 
     // Store spawn position for when game actually starts
     spawnPosition = { x: data.spawnX, y: data.spawnY };
+
+    // Store role data - will be rendered when tutorial screen is shown
+    pendingRoleData = data;
+
+    // If we're already on the tutorial screen, render immediately
+    if (inTutorialPhase) {
+      renderRoleAssignment();
+    }
+  }
+
+  function renderRoleAssignment() {
+    if (!pendingRoleData) return;
+
+    const data = pendingRoleData;
 
     // Role relationships: who each role attacks and should avoid
     const roleRelations = {
@@ -611,6 +629,9 @@ Expiration Time: ${expirationTime}`;
       // Initialize countdown canvas
       const canvas = document.getElementById('countdown-canvas');
       Renderer.init(canvas);
+
+      // Now render the role assignment (deferred from when we received it)
+      renderRoleAssignment();
     } else if (secondsRemaining > 3 && inTutorialPhase) {
       // Still in Phase 1: Update tutorial countdown
       const countdownNumber = document.getElementById('countdown-number');
