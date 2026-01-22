@@ -473,28 +473,32 @@ Expiration Time: ${expirationTime}`;
     }
   }
 
-  function handleMatchStarting(data) {
-    // Hide lobby countdown when transitioning to match
-    const lobbyCountdown = document.getElementById('lobby-countdown');
-    if (lobbyCountdown) {
-      lobbyCountdown.classList.add('hidden');
-    }
+  // Track whether we've transitioned to tutorial screen
+  let inTutorialPhase = false;
 
+  function handleMatchStarting(data) {
     // Stop the refund timer when match starts
     stopLobbyTimer();
 
-    showScreen('countdown');
-
-    // Reset preview phase state
+    // Reset phase states
     inPreviewPhase = false;
+    inTutorialPhase = false;
 
-    // Set initial countdown from server data
-    const countdownNumber = document.getElementById('countdown-number');
-    countdownNumber.textContent = data.countdown || 10;
+    // Show the lobby countdown display for initial countdown (20-11 seconds)
+    const countdownDisplay = document.getElementById('lobby-countdown');
+    const timerDisplay = document.getElementById('timeout-display');
 
-    // Initialize countdown canvas
-    const canvas = document.getElementById('countdown-canvas');
-    Renderer.init(canvas);
+    if (countdownDisplay) {
+      countdownDisplay.classList.remove('hidden');
+      const countdownNumber = document.getElementById('lobby-countdown-number');
+      if (countdownNumber) {
+        countdownNumber.textContent = data.countdown || 20;
+      }
+    }
+
+    if (timerDisplay) {
+      timerDisplay.textContent = `Match starting in ${data.countdown || 20}...`;
+    }
   }
 
   function handleRoleAssignment(data) {
@@ -568,12 +572,47 @@ Expiration Time: ${expirationTime}`;
   function handleCountdown(data) {
     const secondsRemaining = data.secondsRemaining;
 
+    // Phase 0: Waiting screen countdown (20-11 seconds)
     // Phase 1: Tutorial screen (10-4 seconds)
     // Phase 2: Map preview (3-1 seconds)
     // Phase 3: GO! (0 seconds)
 
-    if (secondsRemaining > 3) {
-      // Phase 1: Update tutorial countdown
+    if (secondsRemaining > 10) {
+      // Phase 0: Update waiting screen countdown
+      const countdownDisplay = document.getElementById('lobby-countdown');
+      const timerDisplay = document.getElementById('timeout-display');
+
+      if (countdownDisplay) {
+        const countdownNumber = document.getElementById('lobby-countdown-number');
+        if (countdownNumber) {
+          countdownNumber.textContent = secondsRemaining;
+        }
+      }
+
+      if (timerDisplay) {
+        timerDisplay.textContent = `Match starting in ${secondsRemaining}...`;
+      }
+    } else if (secondsRemaining > 3 && !inTutorialPhase) {
+      // Transition to Phase 1: Tutorial screen at 10 seconds
+      inTutorialPhase = true;
+
+      // Hide lobby countdown
+      const lobbyCountdown = document.getElementById('lobby-countdown');
+      if (lobbyCountdown) {
+        lobbyCountdown.classList.add('hidden');
+      }
+
+      showScreen('countdown');
+
+      // Set countdown number
+      const countdownNumber = document.getElementById('countdown-number');
+      countdownNumber.textContent = secondsRemaining;
+
+      // Initialize countdown canvas
+      const canvas = document.getElementById('countdown-canvas');
+      Renderer.init(canvas);
+    } else if (secondsRemaining > 3 && inTutorialPhase) {
+      // Still in Phase 1: Update tutorial countdown
       const countdownNumber = document.getElementById('countdown-number');
       countdownNumber.textContent = secondsRemaining;
     } else if (secondsRemaining > 0 && !inPreviewPhase) {

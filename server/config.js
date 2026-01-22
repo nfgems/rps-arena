@@ -30,7 +30,7 @@ const RATE_LIMIT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 // Game Configuration
 // ============================================
 
-const COUNTDOWN_DURATION = parseInt(process.env.COUNTDOWN_DURATION, 10) || 10; // seconds
+const COUNTDOWN_DURATION = parseInt(process.env.COUNTDOWN_DURATION, 10) || 20; // seconds
 const TICK_RATE = parseInt(process.env.TICK_RATE, 10) || 30; // Hz
 const SNAPSHOT_RATE = 30; // Hz (fixed - clients expect this)
 
@@ -54,7 +54,7 @@ function generateSecureRngSeed() {
 // ============================================
 
 const LOBBY_TIMEOUT_MS = parseInt(process.env.LOBBY_TIMEOUT_MS, 10) || 30 * 60 * 1000; // 30 minutes
-const LOBBY_COUNTDOWN_DURATION = parseInt(process.env.LOBBY_COUNTDOWN_DURATION, 10) || 10; // seconds before match starts
+const LOBBY_COUNTDOWN_DURATION = parseInt(process.env.LOBBY_COUNTDOWN_DURATION, 10) || 0; // seconds before match starts (0 = skip lobby countdown)
 
 // ============================================
 // Export Configuration
