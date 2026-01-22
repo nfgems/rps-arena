@@ -38,7 +38,9 @@
       "Bash(for f in client/src/*.js server/*.js)",
       "Bash(do wc -l \"$f\")",
       "Bash(done)",
-      "Read(//c/Users/evank/OneDrive/Documents/RPS-ARENA/**)"
+      "Read(//c/Users/evank/OneDrive/Documents/RPS-ARENA/**)",
+      "Bash(start \"\" \"c:\\\\Users\\\\evank\\\\OneDrive\\\\Documents\\\\RPS-ARENA\\\\client\\\\assets\\\\logo.svg\")",
+      "Bash(del \"c:\\\\Users\\\\evank\\\\OneDrive\\\\Documents\\\\RPS-ARENA\\\\client\\\\assets\\\\logo.svg\")"
     ]
   }
 }
