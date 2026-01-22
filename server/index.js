@@ -1039,7 +1039,7 @@ async function initialize() {
   );
   for (const stuckLobby of stuckLobbies) {
     console.log(`[STARTUP] Resetting ${stuckLobby.status} lobby ${stuckLobby.id} after server restart (refunding players)`);
-    lobby.processLobbyRefund(stuckLobby.id, 'server_restart').catch(err => {
+    lobby.processLobbyRefund(stuckLobby.id, 'server_crash').catch(err => {
       console.error(`[STARTUP] Failed to refund lobby ${stuckLobby.id}:`, err);
       // Force reset if refund fails
       lobby.forceResetLobby(stuckLobby.id);
