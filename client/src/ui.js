@@ -488,20 +488,20 @@ Expiration Time: ${expirationTime}`;
     inTutorialPhase = false;
     pendingRoleData = null;
 
-    // Show the lobby countdown display for initial countdown (20-11 seconds)
-    const countdownDisplay = document.getElementById('lobby-countdown');
+    // Hide the old refund timer text (no longer needed)
     const timerDisplay = document.getElementById('timeout-display');
+    if (timerDisplay) {
+      timerDisplay.classList.add('hidden');
+    }
 
+    // Show the lobby countdown box with initial value
+    const countdownDisplay = document.getElementById('lobby-countdown');
     if (countdownDisplay) {
-      countdownDisplay.classList.remove('hidden');
       const countdownNumber = document.getElementById('lobby-countdown-number');
       if (countdownNumber) {
         countdownNumber.textContent = data.countdown || 20;
       }
-    }
-
-    if (timerDisplay) {
-      timerDisplay.textContent = `Match starting in ${data.countdown || 20}...`;
+      countdownDisplay.classList.remove('hidden');
     }
   }
 
@@ -596,19 +596,10 @@ Expiration Time: ${expirationTime}`;
     // Phase 3: GO! (0 seconds)
 
     if (secondsRemaining > 10) {
-      // Phase 0: Update waiting screen countdown
-      const countdownDisplay = document.getElementById('lobby-countdown');
-      const timerDisplay = document.getElementById('timeout-display');
-
-      if (countdownDisplay) {
-        const countdownNumber = document.getElementById('lobby-countdown-number');
-        if (countdownNumber) {
-          countdownNumber.textContent = secondsRemaining;
-        }
-      }
-
-      if (timerDisplay) {
-        timerDisplay.textContent = `Match starting in ${secondsRemaining}...`;
+      // Phase 0: Update waiting screen countdown (the big red box)
+      const countdownNumber = document.getElementById('lobby-countdown-number');
+      if (countdownNumber) {
+        countdownNumber.textContent = secondsRemaining;
       }
     } else if (secondsRemaining > 3 && !inTutorialPhase) {
       // Transition to Phase 1: Tutorial screen at 10 seconds
@@ -1044,7 +1035,10 @@ Expiration Time: ${expirationTime}`;
     const timerDisplay = document.getElementById('timeout-display');
     const lobbyCountdown = document.getElementById('lobby-countdown');
 
-    // Hide lobby countdown by default (will be shown by handleLobbyCountdown)
+    // Show timeout display and hide lobby countdown (default state)
+    if (timerDisplay) {
+      timerDisplay.classList.remove('hidden');
+    }
     if (lobbyCountdown) {
       lobbyCountdown.classList.add('hidden');
     }
