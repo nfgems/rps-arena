@@ -1030,12 +1030,20 @@ async function initialize() {
   // Register callback for lobby list changes (so clients get updated when lobbies reset)
   lobby.setLobbyListChangedCallback(broadcastLobbyList);
 
-  // Resume countdowns for any lobbies that are in 'ready' status after server restart
-  // This handles the case where the server crashed during a lobby countdown
-  const readyLobbies = lobby.getLobbyList().filter(l => l.status === 'ready' && l.playerCount === 3);
-  for (const readyLobby of readyLobbies) {
-    console.log(`[STARTUP] Resuming countdown for ready lobby ${readyLobby.id}`);
-    startLobbyCountdown(readyLobby.id, false); // Use non-admin port for resumed countdowns
+  // Reset any lobbies that are in 'ready' or 'in_progress' status after server restart
+  // Don't resume countdowns - players are disconnected and would be immediately eliminated
+  // For 'in_progress' lobbies, the match has already been voided/recovered above
+  // Instead, refund players and reset lobby to waiting status
+  const stuckLobbies = lobby.getLobbyList().filter(l =>
+    (l.status === 'ready' || l.status === 'in_progress') && l.playerCount > 0
+  );
+  for (const stuckLobby of stuckLobbies) {
+    console.log(`[STARTUP] Resetting ${stuckLobby.status} lobby ${stuckLobby.id} after server restart (refunding players)`);
+    lobby.processLobbyRefund(stuckLobby.id, 'server_restart').catch(err => {
+      console.error(`[STARTUP] Failed to refund lobby ${stuckLobby.id}:`, err);
+      // Force reset if refund fails
+      lobby.forceResetLobby(stuckLobby.id);
+    });
   }
 
   // Initialize payment provider
