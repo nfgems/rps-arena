@@ -523,6 +523,54 @@ function decrementConnection(ip) {
 // ============================================
 
 /**
+ * Start a match immediately (called when lobby countdown is 0 or countdown finishes)
+ * @param {number} lobbyId - The lobby ID
+ * @param {boolean} isAdminPort - Whether this is the admin port
+ */
+async function startMatchImmediately(lobbyId, isAdminPort) {
+  try {
+    const newMatch = await match.startMatch(lobbyId, isAdminPort);
+    // Update currentMatchId for all connected players in the lobby
+    const lobbyData = lobby.getLobby(lobbyId);
+    if (lobbyData && lobbyData.connections) {
+      for (const [userId, ws] of lobbyData.connections) {
+        if (ws.setMatchId) {
+          ws.setMatchId(newMatch.id);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Failed to start match:', error);
+    // If lobby balance is insufficient, void the lobby and refund players
+    if (error.message === 'INSUFFICIENT_LOBBY_BALANCE') {
+      sendAlert(AlertType.INSUFFICIENT_BALANCE, {
+        lobbyId,
+        balance: error.balance || 'unknown',
+      }).catch(alertErr => console.error('Alert send failed:', alertErr));
+      await lobby.processLobbyRefund(lobbyId, 'insufficient_lobby_balance');
+      broadcastLobbyList();
+    } else {
+      // Catch-all: Reset lobby status on any match start error to prevent stuck lobbies
+      console.error(`[MATCH_START] Resetting lobby ${lobbyId} due to match start failure:`, error.message);
+      sendAlert(AlertType.DATABASE_ERROR, {
+        operation: 'match_start',
+        lobbyId,
+        error: error.message,
+      }).catch(alertErr => console.error('Alert send failed:', alertErr));
+      try {
+        await lobby.processLobbyRefund(lobbyId, 'match_start_failed');
+        broadcastLobbyList();
+      } catch (refundErr) {
+        console.error(`[MATCH_START] Failed to refund lobby ${lobbyId}:`, refundErr);
+        // Last resort: force reset the lobby to prevent it being stuck
+        lobby.forceResetLobby(lobbyId);
+        broadcastLobbyList();
+      }
+    }
+  }
+}
+
+/**
  * Start a countdown for a lobby that is ready (3 players)
  * Broadcasts countdown ticks to all lobby players, then starts the match
  * @param {number} lobbyId - The lobby ID
@@ -535,6 +583,12 @@ function startLobbyCountdown(lobbyId, isAdminPort) {
   }
 
   let secondsRemaining = config.LOBBY_COUNTDOWN_DURATION;
+
+  // If lobby countdown duration is 0, start match immediately (no lobby countdown)
+  if (secondsRemaining <= 0) {
+    startMatchImmediately(lobbyId, isAdminPort);
+    return;
+  }
 
   // Send initial countdown
   const initialMsg = protocol.createLobbyCountdown(lobbyId, secondsRemaining);
@@ -557,47 +611,7 @@ function startLobbyCountdown(lobbyId, isAdminPort) {
       // Countdown finished - start the match
       clearInterval(interval);
       lobbyCountdowns.delete(lobbyId);
-
-      try {
-        const newMatch = await match.startMatch(lobbyId, isAdminPort);
-        // Update currentMatchId for all connected players in the lobby
-        const lobbyData = lobby.getLobby(lobbyId);
-        if (lobbyData && lobbyData.connections) {
-          for (const [userId, ws] of lobbyData.connections) {
-            if (ws.setMatchId) {
-              ws.setMatchId(newMatch.id);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to start match:', error);
-        // If lobby balance is insufficient, void the lobby and refund players
-        if (error.message === 'INSUFFICIENT_LOBBY_BALANCE') {
-          sendAlert(AlertType.INSUFFICIENT_BALANCE, {
-            lobbyId,
-            balance: error.balance || 'unknown',
-          }).catch(alertErr => console.error('Alert send failed:', alertErr));
-          await lobby.processLobbyRefund(lobbyId, 'insufficient_lobby_balance');
-          broadcastLobbyList();
-        } else {
-          // Catch-all: Reset lobby status on any match start error to prevent stuck lobbies
-          console.error(`[MATCH_START] Resetting lobby ${lobbyId} due to match start failure:`, error.message);
-          sendAlert(AlertType.DATABASE_ERROR, {
-            operation: 'match_start',
-            lobbyId,
-            error: error.message,
-          }).catch(alertErr => console.error('Alert send failed:', alertErr));
-          try {
-            await lobby.processLobbyRefund(lobbyId, 'match_start_failed');
-            broadcastLobbyList();
-          } catch (refundErr) {
-            console.error(`[MATCH_START] Failed to refund lobby ${lobbyId}:`, refundErr);
-            // Last resort: force reset the lobby to prevent it being stuck
-            lobby.forceResetLobby(lobbyId);
-            broadcastLobbyList();
-          }
-        }
-      }
+      await startMatchImmediately(lobbyId, isAdminPort);
     }
   }, 1000);
 
