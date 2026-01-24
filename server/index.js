@@ -628,7 +628,9 @@ function cancelLobbyCountdown(lobbyId) {
  */
 function setupWebSocketHandler(wsServer, isAdminPort) {
   wsServer.on('connection', (ws, req) => {
-    const ip = req.socket.remoteAddress;
+    // Get real client IP, checking X-Forwarded-For header for proxy/load balancer setups
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : req.socket.remoteAddress;
 
     // Check connection limit
     if (!checkConnectionLimit(ip)) {
