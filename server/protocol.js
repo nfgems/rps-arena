@@ -37,6 +37,7 @@ const ServerMessages = {
   SHOWDOWN_START: 'SHOWDOWN_START',
   SHOWDOWN_READY: 'SHOWDOWN_READY',
   HEART_CAPTURED: 'HEART_CAPTURED',
+  HEARTS_RESPAWN: 'HEARTS_RESPAWN',
 };
 
 // ============================================
@@ -524,6 +525,23 @@ function createHeartCaptured(playerId, heartId, playerScore) {
   });
 }
 
+/**
+ * Create hearts respawn message
+ * Sent when remaining hearts move to new random locations after a capture
+ * @param {Array} hearts - Array of remaining heart positions [{id, x, y}, ...]
+ * @returns {string} JSON message
+ */
+function createHeartsRespawn(hearts) {
+  return JSON.stringify({
+    type: ServerMessages.HEARTS_RESPAWN,
+    hearts: hearts.map(h => ({
+      id: h.id,
+      x: Math.round(h.x * 100) / 100,
+      y: Math.round(h.y * 100) / 100,
+    })),
+  });
+}
+
 // ============================================
 // Utilities
 // ============================================
@@ -576,4 +594,5 @@ module.exports = {
   createShowdownStart,
   createShowdownReady,
   createHeartCaptured,
+  createHeartsRespawn,
 };

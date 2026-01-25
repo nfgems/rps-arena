@@ -99,17 +99,17 @@ const Tutorial = (function () {
     },
     [TUTORIAL_STEPS.SHOWDOWN_INTRO]: {
       title: 'Showdown Mode!',
-      text: 'When only 2 players remain, SHOWDOWN begins! Both players freeze for 3 seconds.',
+      text: 'When only 2 players remain, SHOWDOWN begins! Both players reset to center and freeze for 5 seconds.',
       subtext: 'Get ready for the showdown...',
     },
     [TUTORIAL_STEPS.SHOWDOWN_FREEZE]: {
       title: 'SHOWDOWN',
-      text: "You're frozen! In 3 seconds, hearts will appear. First to collect 2 wins!",
+      text: "You're frozen at the center! In 5 seconds, hearts will appear. First to collect 2 wins!",
       subtext: 'In showdown, collisions only cause bounces - no eliminations possible.',
     },
     [TUTORIAL_STEPS.HEART_COLLECTION]: {
       title: 'Collect Hearts!',
-      text: 'Race to collect 2 hearts! Move directly into a heart to grab it.',
+      text: 'Race to collect 2 hearts! Hearts respawn to new locations after each capture.',
       subtext: 'You need 2 hearts to win. The opponent is also collecting!',
     },
     [TUTORIAL_STEPS.COMPLETE]: {
@@ -616,7 +616,7 @@ const Tutorial = (function () {
         if (ticksInStep === 1) {
           setupShowdownFreeze();
         }
-        if (ticksInStep >= 90) {
+        if (ticksInStep >= 150) {
           advanceToStep(TUTORIAL_STEPS.HEART_COLLECTION);
         }
         break;
@@ -727,12 +727,18 @@ const Tutorial = (function () {
   }
 
   function setupShowdownFreeze() {
+    // Reset player to center (left side)
     player.frozen = true;
     player.dirX = 0;
     player.dirY = 0;
+    player.x = ARENA_WIDTH / 2 - 50;
+    player.y = ARENA_HEIGHT / 2;
 
+    // Reset bot to center (right side)
     const paperBot = bots.find(b => b.role === 'paper');
     paperBot.frozen = true;
+    paperBot.x = ARENA_WIDTH / 2 + 50;
+    paperBot.y = ARENA_HEIGHT / 2;
 
     showdownState = {
       frozen: true,
@@ -749,7 +755,7 @@ const Tutorial = (function () {
     function animateText() {
       if (!showdownState || !showdownState.showText) return;
       showdownState.textProgress = Math.min(1, (Date.now() - startTime) / animDuration);
-      if (Date.now() - startTime < 3000) {
+      if (Date.now() - startTime < 5000) {
         requestAnimationFrame(animateText);
       }
     }
@@ -859,6 +865,7 @@ const Tutorial = (function () {
     if (!showdownState || !showdownState.hearts) return;
 
     const entities = [player, ...bots.filter(b => b.alive)];
+    let captureOccurred = false;
 
     for (const heart of showdownState.hearts) {
       if (heart.captured) continue;
@@ -867,6 +874,7 @@ const Tutorial = (function () {
         const dist = getDistance(entity, heart);
         if (dist <= PLAYER_RADIUS + HEART_RADIUS) {
           heart.captured = true;
+          captureOccurred = true;
 
           if (!showdownState.scores[entity.id]) {
             showdownState.scores[entity.id] = 0;
@@ -883,6 +891,24 @@ const Tutorial = (function () {
           break;
         }
       }
+    }
+
+    // Respawn remaining hearts to new locations after a capture (if game not over)
+    if (captureOccurred) {
+      const maxScore = Math.max(...Object.values(showdownState.scores), 0);
+      if (maxScore < 2) {
+        respawnRemainingHearts();
+      }
+    }
+  }
+
+  function respawnRemainingHearts() {
+    const padding = PLAYER_RADIUS + HEART_RADIUS + 50;
+    const uncaptured = showdownState.hearts.filter(h => !h.captured);
+
+    for (const heart of uncaptured) {
+      heart.x = padding + Math.random() * (ARENA_WIDTH - 2 * padding);
+      heart.y = padding + Math.random() * (ARENA_HEIGHT - 2 * padding);
     }
   }
 

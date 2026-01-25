@@ -32,7 +32,7 @@ const MAX_TICK_STALENESS = 2000; // 2 seconds (60 ticks at 30Hz)
 
 
 // Showdown mode constants
-const SHOWDOWN_FREEZE_DURATION = 3000; // 3 seconds freeze when showdown starts (shows "SHOWDOWN" text)
+const SHOWDOWN_FREEZE_DURATION = 5000; // 5 seconds freeze when showdown starts (shows "SHOWDOWN" text)
 const SHOWDOWN_HEARTS_TO_WIN = 2; // First player to capture this many hearts wins
 
 // ============================================
@@ -700,6 +700,17 @@ function processTick(match) {
           console.error(`[GAME_LOOP] Failed to end match ${match.id}:`, err);
         });
         return;
+      } else {
+        // No winner yet - respawn remaining hearts to new random locations
+        const remainingHearts = match.showdown.hearts.filter(h => !h.captured);
+        if (remainingHearts.length > 0) {
+          const respawned = physics.respawnHearts(match.showdown.hearts);
+          if (respawned.length > 0) {
+            const respawnMsg = protocol.createHeartsRespawn(respawned);
+            broadcastToMatch(match, respawnMsg);
+            console.log(`[SHOWDOWN] Respawned ${respawned.length} hearts to new locations`);
+          }
+        }
       }
     }
   }
@@ -1273,11 +1284,23 @@ function triggerShowdown(match) {
     freezeEndTime: Date.now() + SHOWDOWN_FREEZE_DURATION,
   };
 
-  // Freeze all alive players during showdown text
-  for (const player of match.players) {
-    if (player.alive) {
-      player.frozen = true;
-    }
+  // Reset both players symmetrically around center for fair showdown
+  const centerX = physics.ARENA_WIDTH / 2;
+  const centerY = physics.ARENA_HEIGHT / 2;
+  const offsetX = 50; // Offset from center (enough to avoid collision/bounce)
+
+  // Freeze all alive players and reset them symmetrically around center
+  const alivePlayers = match.players.filter(p => p.alive);
+  let playerIndex = 0;
+  for (const player of alivePlayers) {
+    player.frozen = true;
+    // Place first player left of center, second player right of center
+    player.x = centerX + (playerIndex === 0 ? -offsetX : offsetX);
+    player.y = centerY;
+    // Reset velocity to eliminate any momentum advantage
+    player.vx = 0;
+    player.vy = 0;
+    playerIndex++;
   }
 
   // Broadcast SHOWDOWN_START (freeze phase, "SHOWDOWN" text displays)

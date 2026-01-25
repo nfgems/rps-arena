@@ -515,6 +515,69 @@ function spawnHearts(count = 3) {
 }
 
 /**
+ * Respawn uncaptured hearts to new random locations
+ * Called after a heart is captured to move remaining hearts
+ * @param {Array} hearts - Array of all heart objects
+ * @returns {Array} Array of respawned hearts (only the ones that moved)
+ */
+function respawnHearts(hearts) {
+  const uncaptured = hearts.filter(h => !h.captured);
+  if (uncaptured.length === 0) return [];
+
+  const padding = PLAYER_RADIUS + HEART_RADIUS + 10;
+  const maxAttempts = 100;
+  const respawned = [];
+
+  // Generate new positions for all uncaptured hearts
+  const newPositions = [];
+  for (let i = 0; i < uncaptured.length; i++) {
+    let attempts = 0;
+    let validPosition = null;
+
+    while (attempts < maxAttempts) {
+      const x = padding + Math.random() * (ARENA_WIDTH - 2 * padding);
+      const y = padding + Math.random() * (ARENA_HEIGHT - 2 * padding);
+
+      // Check distance from other new positions
+      let isValid = true;
+      for (const pos of newPositions) {
+        const dx = x - pos.x;
+        const dy = y - pos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < MIN_HEART_DISTANCE) {
+          isValid = false;
+          break;
+        }
+      }
+
+      if (isValid) {
+        validPosition = { x, y };
+        break;
+      }
+      attempts++;
+    }
+
+    // Fallback to grid if no valid position found
+    if (!validPosition) {
+      const gridX = (i + 1) * (ARENA_WIDTH / (uncaptured.length + 1));
+      const gridY = ARENA_HEIGHT / 2 + (Math.random() - 0.5) * 200;
+      validPosition = { x: gridX, y: gridY };
+    }
+
+    newPositions.push(validPosition);
+  }
+
+  // Update heart positions
+  for (let i = 0; i < uncaptured.length; i++) {
+    uncaptured[i].x = newPositions[i].x;
+    uncaptured[i].y = newPositions[i].y;
+    respawned.push(uncaptured[i]);
+  }
+
+  return respawned;
+}
+
+/**
  * Check if a player is touching a heart (for capture)
  * Simple overlap check: if distance between centers <= sum of radii, they're touching
  * @param {Object} player - Player object with {x, y}
@@ -618,6 +681,7 @@ module.exports = {
 
   // Showdown mode
   spawnHearts,
+  respawnHearts,
   processHeartCaptures,
   HEART_RADIUS,
 };

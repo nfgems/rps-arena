@@ -189,6 +189,7 @@ const UI = (function () {
     Network.addEventListener('SHOWDOWN_START', handleShowdownStart);
     Network.addEventListener('SHOWDOWN_READY', handleShowdownReady);
     Network.addEventListener('HEART_CAPTURED', handleHeartCaptured);
+    Network.addEventListener('HEARTS_RESPAWN', handleHeartsRespawn);
 
     // Wallet change handlers - prevent account switching during active match
     window.addEventListener('wallet:accountChanged', handleWalletAccountChanged);
@@ -824,6 +825,21 @@ Expiration Time: ${expirationTime}`;
     // Trigger confetti immediately when someone wins (collects 2nd heart)
     if (data.playerScore >= 2) {
       Confetti.start(3000); // 3 second celebration
+    }
+  }
+
+  function handleHeartsRespawn(data) {
+    console.log('Hearts respawned to new locations:', data);
+
+    if (!showdownState) return;
+
+    // Update positions of respawned hearts
+    for (const respawnedHeart of data.hearts) {
+      const heart = showdownState.hearts.find(h => h.id === respawnedHeart.id);
+      if (heart && !heart.captured) {
+        heart.x = respawnedHeart.x;
+        heart.y = respawnedHeart.y;
+      }
     }
   }
 
